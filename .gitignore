@@ -2,3 +2,9 @@ node_modules/
 dist/
 .DS_Store
 *.local
+
+__pycache__/
+models/
+migrations/
+
+.env
