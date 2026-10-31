@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    database_url: str = "postgresql+asyncpg://game:game@localhost:5432/interview_game"
+    database_url: str = "postgresql+asyncpg://game:game@localhost:5435/interview_game"
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     qwen_url: str = "http://localhost:8081/v1/chat/completions"
     qwen_model: str = "Qwen3-0.6B"

@@ -131,10 +131,10 @@ export class FirstPersonController {
   };
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
-    if (event.repeat) {
+    if (!this.active || event.repeat) {
       return;
     }
-    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+    if (event.target instanceof HTMLElement && event.target.closest("input, textarea, select, button")) {
       return;
     }
     this.keys.add(event.code);

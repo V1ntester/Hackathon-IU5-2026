@@ -25,7 +25,7 @@ export class Hud {
         <span>26 × 26 м</span>
         <span>офис · 1 этаж</span>
       </div>
-      <div class="hud__hint">WASD — движение&ensp;·&ensp;Shift — бег&ensp;·&ensp;Esc — пауза</div>
+      <div class="hud__hint">WASD — движение&ensp;·&ensp;Shift — бег&ensp;·&ensp;E — NPC&ensp;·&ensp;Esc — пауза</div>
       <section class="hud__overlay" aria-label="Старт">
         <div class="start">
           <p class="start__eyebrow">Прототип · октябрь 2026</p>
@@ -95,12 +95,18 @@ export class Hud {
     this.description.textContent =
       "Сессия приостановлена. Кликните, чтобы вернуться в офис — позиция сохранится.";
     this.buttonLabel.textContent = "Продолжить";
-    this.overlay.querySelector<HTMLButtonElement>(".start__button")?.focus({ preventScroll: true });
+    if (!this.root.classList.contains("is-interacting")) {
+      this.overlay.querySelector<HTMLButtonElement>(".start__button")?.focus({ preventScroll: true });
+    }
   }
 
   showError(message: string): void {
     this.error.textContent = message;
     this.error.hidden = false;
+  }
+
+  setInteractionOpen(open: boolean): void {
+    this.root.classList.toggle("is-interacting", open);
   }
 
   dispose(): void {

@@ -367,6 +367,66 @@ body {
   display: none;
 }
 
+.hud.is-interacting .hud__overlay {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.hud.is-interacting .hud__crosshair {
+  opacity: 0;
+}
+
+.online {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  z-index: 2;
+  width: min(390px, calc(100vw - 40px));
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  pointer-events: auto;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(9, 11, 13, 0.96);
+  font-size: 13px;
+}
+
+.online__summary,
+.online form,
+.online label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.online__dialog {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+}
+
+.online__dialog[hidden] {
+  display: none;
+}
+
+.online h2 { font-size: 18px; }
+.online p { line-height: 1.5; }
+.online button,
+.online textarea,
+.online select,
+.online input {
+  font: inherit;
+  max-width: 100%;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.online button { cursor: pointer; }
+.online button:disabled { cursor: default; opacity: 0.5; }
+.online textarea { resize: vertical; }
+.online__result { white-space: pre-wrap; overflow-wrap: anywhere; }
+
 @media (max-width: 620px) {
   .hud__meta,
   .hud__hint {

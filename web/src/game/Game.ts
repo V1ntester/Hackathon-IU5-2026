@@ -9,6 +9,9 @@ import {
 import { FirstPersonController } from "../player/FirstPersonController";
 import { Hud } from "../ui/Hud";
 import { Office } from "../world/Office";
+import { GameClient } from "../network/GameClient";
+import { RemotePlayers } from "../world/RemotePlayers";
+import { OnlinePanel } from "../ui/OnlinePanel";
 
 export class Game {
   readonly engine: Engine;
@@ -16,8 +19,12 @@ export class Game {
   readonly world: Office;
   readonly player: FirstPersonController;
   readonly hud: Hud;
+  readonly network: GameClient;
+  readonly remotePlayers: RemotePlayers;
+  readonly online: OnlinePanel;
 
   private readonly canvas: HTMLCanvasElement;
+  private readonly movementTimer: ReturnType<typeof setInterval>;
 
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     this.canvas = canvas;
@@ -42,12 +49,29 @@ export class Game {
     this.world = new Office(this.scene);
     this.player = new FirstPersonController(this.scene, canvas, this.world.spawn);
     this.hud = new Hud(uiRoot, this.requestPointerLock);
+    this.remotePlayers = new RemotePlayers(this.scene);
+    this.network = new GameClient({
+      status: (message, connected) => this.online.setStatus(message, connected),
+      state: (players, localId) => {
+        this.remotePlayers.sync(players, localId);
+        this.online.setPlayerCount(players.length);
+      },
+      connected: () => {
+        this.sendPosition();
+        void this.online.loadScenarios();
+      },
+    });
+    this.online = new OnlinePanel(uiRoot, this.network, this.toggleNpc);
+    // Интервал выше 50 мс: сервер ограничивает частоту принятых перемещений.
+    this.movementTimer = setInterval(this.sendPosition, 80);
+    void this.network.connect();
 
     this.setupRenderPipeline();
 
     document.addEventListener("pointerlockchange", this.onPointerLockChange);
     document.addEventListener("pointerlockerror", this.onPointerLockError);
     window.addEventListener("resize", this.onResize);
+    window.addEventListener("keydown", this.onInteractionKey);
 
     this.engine.runRenderLoop(() => this.scene.render());
   }
@@ -60,7 +84,12 @@ export class Game {
     document.removeEventListener("pointerlockchange", this.onPointerLockChange);
     document.removeEventListener("pointerlockerror", this.onPointerLockError);
     window.removeEventListener("resize", this.onResize);
+    window.removeEventListener("keydown", this.onInteractionKey);
 
+    clearInterval(this.movementTimer);
+    this.network.dispose();
+    this.remotePlayers.dispose();
+    this.online.dispose();
     this.engine.stopRenderLoop();
     this.player.dispose();
     this.hud.dispose();
@@ -94,6 +123,7 @@ export class Game {
   }
 
   private readonly requestPointerLock = (): void => {
+    if (this.online.isOpen) return;
     if (document.pointerLockElement === this.canvas) {
       return;
     }
@@ -112,7 +142,7 @@ export class Game {
 
   private readonly onPointerLockChange = (): void => {
     const locked = document.pointerLockElement === this.canvas;
-    this.player.setEnabled(locked);
+    this.player.setEnabled(locked && !this.online.isOpen);
     this.hud.setPlaying(locked);
   };
 
@@ -122,5 +152,33 @@ export class Game {
 
   private readonly onResize = (): void => {
     this.engine.resize();
+  };
+
+  private readonly sendPosition = (): void => {
+    const { x, y, z } = this.player.camera.position;
+    this.network.sendMove({ x, y, z }, this.player.camera.rotation.y);
+  };
+
+  private readonly toggleNpc = (): void => {
+    const open = !this.online.isOpen;
+    this.online.setOpen(open);
+    this.hud.setInteractionOpen(open);
+    if (open) {
+      this.player.setEnabled(false);
+      if (document.pointerLockElement === this.canvas) document.exitPointerLock();
+    }
+  };
+
+  private readonly onInteractionKey = (event: KeyboardEvent): void => {
+    if (event.repeat) return;
+    if (event.code === "Escape" && this.online.isOpen) {
+      this.toggleNpc();
+      return;
+    }
+    if (event.target instanceof HTMLElement && event.target.closest("input, textarea, select, button")) return;
+    if (event.code === "KeyE") {
+      event.preventDefault();
+      this.toggleNpc();
+    }
   };
 }

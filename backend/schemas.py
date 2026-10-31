@@ -59,5 +59,5 @@ class MoveMessage(BaseModel):
     model_config = ConfigDict(extra="forbid")
     type: Literal["move"]
     position: Position
-    # Поворот вокруг вертикальной оси Three.js, в радианах.
+    # Поворот вокруг вертикальной оси Y сцены, в радианах.
     rotation_y: float = Field(default=0, ge=-6.283186, le=6.283186, allow_inf_nan=False)
