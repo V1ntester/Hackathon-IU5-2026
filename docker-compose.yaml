@@ -1,0 +1,48 @@
+
+name: npc-ai
+
+services:
+  llm:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:8080"
+    volumes:
+      - ./models/llm:/models:ro
+    command:
+      - -m
+      - /models/Qwen3-0.6B-Q4_K_M.gguf
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - -c
+      - "2048"
+      - -t
+      - "6"
+      - -ngl
+      - "0"
+
+  stt:
+    image: ghcr.io/ggml-org/whisper.cpp:main
+    restart: unless-stopped
+
+    entrypoint: ["whisper-server"]
+
+    ports:
+      - "127.0.0.1:8082:8080"
+
+    volumes:
+      - ./models/whisper:/models:ro
+
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --model
+      - /models/ggml-base.bin
+      - --threads
+      - "4"
+      - --convert
+      - --no-gpu
