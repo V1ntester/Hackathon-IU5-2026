@@ -2,6 +2,23 @@
 name: npc-ai
 
 services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-request_yourself_db}
+      POSTGRES_USER: ${POSTGRES_USER:-game}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-game}
+    ports:
+      - "127.0.0.1:5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   llm:
     image: ghcr.io/ggml-org/llama.cpp:server
     restart: unless-stopped
@@ -46,3 +63,6 @@ services:
       - "4"
       - --convert
       - --no-gpu
+
+volumes:
+  postgres_data:
