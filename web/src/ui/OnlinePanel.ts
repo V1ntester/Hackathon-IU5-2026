@@ -7,7 +7,6 @@ export class OnlinePanel {
   private readonly count: HTMLElement;
   private readonly select: HTMLSelectElement;
   private readonly input: HTMLTextAreaElement;
-  private readonly file: HTMLInputElement;
   private readonly result: HTMLElement;
   private readonly form: HTMLFormElement;
   private readonly reload: HTMLButtonElement;
@@ -18,23 +17,21 @@ export class OnlinePanel {
   private disposed = false;
   isOpen = false;
 
-  constructor(mount: HTMLElement, private readonly client: GameClient, toggle: () => void) {
+  constructor(mount: HTMLElement, private readonly client: GameClient, close: () => void) {
     this.root = document.createElement("section");
     this.root.className = "online";
     this.root.innerHTML = `
       <div class="online__summary">
         <span data-status role="status">Подключение…</span>
         <span data-count>Игроков: 0</span>
-        <button type="button" data-toggle>NPC · E</button>
       </div>
       <section class="online__dialog" aria-label="Разговор с NPC" hidden>
         <h2>Собеседование с NPC</h2>
-        <p>Напишите ответ или загрузите аудиозапись. NPC ответит текстом.</p>
+        <p>Напишите ответ. NPC ответит текстом.</p>
         <button type="button" data-reload>Обновить сценарии</button>
         <form>
           <label>Сценарий<select aria-label="Сценарий" required></select></label>
           <label>Ваш ответ<textarea maxlength="1000" rows="4" required></textarea></label>
-          <label>Аудиозапись<input type="file" accept="audio/wav,audio/x-wav,audio/wave,audio/webm,video/webm,audio/ogg,audio/mpeg,audio/mp4,audio/flac"></label>
           <button type="submit">Отправить</button>
         </form>
         <p data-result role="status" class="online__result"></p>
@@ -47,18 +44,15 @@ export class OnlinePanel {
     this.count = this.root.querySelector<HTMLElement>("[data-count]")!;
     this.select = this.root.querySelector<HTMLSelectElement>("select")!;
     this.input = this.root.querySelector<HTMLTextAreaElement>("textarea")!;
-    this.file = this.root.querySelector<HTMLInputElement>("input")!;
     this.result = this.root.querySelector<HTMLElement>("[data-result]")!;
     this.form = this.root.querySelector<HTMLFormElement>("form")!;
     this.reload = this.root.querySelector<HTMLButtonElement>("[data-reload]")!;
-    this.root.querySelector("[data-toggle]")!.addEventListener("click", toggle);
-    this.root.querySelector("[data-close]")!.addEventListener("click", toggle);
+    this.root.querySelector("[data-close]")!.addEventListener("click", close);
     this.reload.addEventListener("click", () => void this.loadScenarios());
     this.form.addEventListener("submit", (event) => {
       event.preventDefault();
       void this.send();
     });
-    this.file.addEventListener("change", () => { this.input.required = !this.file.files?.length; });
     this.updateControls();
   }
 
@@ -103,29 +97,17 @@ export class OnlinePanel {
 
   private async send(): Promise<void> {
     if (this.busy || !this.connected || !this.hasScenarios) return;
-    const file = this.file.files?.[0];
     const scenarioId = this.select.value;
-    let message = this.input.value.trim();
-    if (!file && !message) return;
-    if (!file && message.length > 1000) {
+    const message = this.input.value.trim();
+    if (!message) return;
+    if (message.length > 1000) {
       this.result.textContent = "Сократите ответ до 1000 символов.";
       return;
     }
     this.busy = true;
-    this.result.textContent = file ? "Распознавание аудио…" : "NPC готовит ответ…";
+    this.result.textContent = "NPC готовит ответ…";
     this.updateControls();
     try {
-      if (file) {
-        const response = await this.client.transcribe(file);
-        if (this.disposed) return;
-        message = response.text.trim();
-        this.input.value = message;
-        this.file.value = "";
-        this.input.required = true;
-        if (!message) throw new Error("Речь не распознана. Попробуйте другую запись.");
-        if (message.length > 1000) throw new Error("Сократите распознанный текст до 1000 символов и отправьте снова.");
-        this.result.textContent = "NPC готовит ответ…";
-      }
       const response = await this.client.chat(scenarioId, message);
       if (!this.disposed) this.result.textContent = response.reply;
     } catch (error) {

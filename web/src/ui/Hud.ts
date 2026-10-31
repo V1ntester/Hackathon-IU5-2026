@@ -6,6 +6,7 @@ export class Hud {
   private readonly description: HTMLElement;
   private readonly buttonLabel: HTMLElement;
   private readonly error: HTMLElement;
+  private readonly promptElement: HTMLElement;
 
   private started = false;
 
@@ -14,6 +15,10 @@ export class Hud {
     root.className = "hud";
     root.innerHTML = `
       <div class="hud__crosshair" aria-hidden="true"></div>
+      
+      <!-- Элемент подсказки по центру экрана (изначально скрыт) -->
+      <div class="hud__prompt" style="position: absolute; top: 58%; left: 50%; transform: translate(-50%, -50%); color: white; font-family: sans-serif; font-size: 16px; background: rgba(0,0,0,0.6); padding: 6px 14px; border-radius: 4px; display: none; pointer-events: none;"></div>
+
       <header class="hud__brand">
         <span class="hud__mark">PH</span>
         <span class="hud__brand-copy">
@@ -25,7 +30,7 @@ export class Hud {
         <span>26 × 26 м</span>
         <span>офис · 1 этаж</span>
       </div>
-      <div class="hud__hint">WASD — движение&ensp;·&ensp;Shift — бег&ensp;·&ensp;E — NPC&ensp;·&ensp;Esc — пауза</div>
+      <div class="hud__hint">WASD — движение&ensp;·&ensp;Shift — бег&ensp;·&ensp;Подойдите к NPC для разговора&ensp;·&ensp;Esc — пауза</div>
       <section class="hud__overlay" aria-label="Старт">
         <div class="start">
           <p class="start__eyebrow">Прототип · октябрь 2026</p>
@@ -58,8 +63,9 @@ export class Hud {
     const description = root.querySelector<HTMLElement>(".start__text");
     const buttonLabel = root.querySelector<HTMLElement>(".start__button-label");
     const error = root.querySelector<HTMLElement>(".start__error");
+    const promptElement = root.querySelector<HTMLElement>(".hud__prompt");
 
-    if (!overlay || !eyebrow || !title || !description || !buttonLabel || !error) {
+    if (!overlay || !eyebrow || !title || !description || !buttonLabel || !error || !promptElement) {
       throw new Error("HUD: не удалось создать разметку");
     }
 
@@ -69,6 +75,7 @@ export class Hud {
     this.description = description;
     this.buttonLabel = buttonLabel;
     this.error = error;
+    this.promptElement = promptElement;
 
     // Клик в любом месте заставки — вход (клик по кнопке всплывает сюда же).
     overlay.addEventListener("click", () => onEnter());
@@ -98,6 +105,15 @@ export class Hud {
     if (!this.root.classList.contains("is-interacting")) {
       this.overlay.querySelector<HTMLButtonElement>(".start__button")?.focus({ preventScroll: true });
     }
+  }
+
+  public showPrompt(text: string): void {
+    this.promptElement.innerText = text;
+    this.promptElement.style.display = "block";
+  }
+
+  public hidePrompt(): void {
+    this.promptElement.style.display = "none";
   }
 
   showError(message: string): void {

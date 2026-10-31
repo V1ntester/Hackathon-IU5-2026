@@ -17,11 +17,12 @@ const TOTAL_WIDTH = WORLD.size + WORLD.wallThickness * 2;
 
 /**
  * Каркас офиса: пол, потолок, глухие стены, витражные стены,
- * колонны и потолочные светильники. Мебель и оборудование пока не добавляются.
+ * колонны и потолочные светильники. Мебель и NPC загружаются асинхронно из GLB.
  */
 export class Office {
   readonly spawn: Vector3;
   readonly materials: OfficeMaterials;
+  npc: AbstractMesh | null = null;
 
   private readonly scene: Scene;
   private readonly lighting: OfficeLighting;
@@ -55,6 +56,18 @@ export class Office {
     }
 
     this.spawn = new Vector3(SPAWN.x, PLAYER.eyeHeight, SPAWN.z);
+
+    void this.init();
+  }
+
+  public async init(): Promise<void> {
+      await this.setupOfficeProps();
+
+      for (const mesh of this.scene.meshes) {
+          if (mesh.metadata?.castShadow === true) {
+              this.lighting.shadows.addShadowCaster(mesh);
+          }
+      }
   }
 
   private buildFloor(): void {
@@ -414,15 +427,15 @@ export class Office {
     return merged;
   }
 
-  async setupOfficeProps(scene: Scene): Promise<void> {
+  async setupOfficeProps(): Promise<void> {
     const modelsPath = "/models/";
 
     try {
         // 1. Дверь по центру стены за спиной игрока (Z = -10)
-        const doorResult = await ImportMeshAsync("low_poly_door.glb", scene, { rootUrl: modelsPath });
+        const doorResult = await ImportMeshAsync("low_poly_door.glb", this.scene, { rootUrl: modelsPath });
         const door = doorResult.meshes[0];
         if (door) {
-            door.position = new Vector3(0, 0, -10);
+            door.position = new Vector3(0, 1.5, -13);
         }
 
         // 2. Координаты для рабочих мест (столы, компьютеры, стулья)
@@ -435,33 +448,46 @@ export class Office {
 
         for (const pos of deskPositions) {
             // Загрузка стола
-            const deskResult = await ImportMeshAsync("low_poly_desk_blockbench.glb", scene, { rootUrl: modelsPath });
+            const deskResult = await ImportMeshAsync("low-poly_desk_blockbench.glb", this.scene, { rootUrl: modelsPath });
             const desk = deskResult.meshes[0];
             if (desk) {
-                desk.position = pos;
+              desk.position = pos;
             }
 
             // Загрузка компьютера (ставим на стол по высоте Y)
-            const pcResult = await ImportMeshAsync("hand-painted_low_poly_computer.glb", scene, { rootUrl: modelsPath });
+            const pcResult = await ImportMeshAsync("hand-painted_low_poly_computer.glb", this.scene, { rootUrl: modelsPath });
             const pc = pcResult.meshes[0];
             if (pc) {
-                pc.position = new Vector3(pos.x, pos.y + 0.8, pos.z);
+              pc.position = new Vector3(pos.x, pos.y + 1.12, pos.z);
             }
 
             // Загрузка стула (ставим перед столом)
-            const chairResult = await ImportMeshAsync("low_poly_office_chair.glb", scene, { rootUrl: modelsPath });
+            const chairResult = await ImportMeshAsync("low_poly_office_chair.glb", this.scene, { rootUrl: modelsPath });
             const chair = chairResult.meshes[0];
             if (chair) {
                 chair.position = new Vector3(pos.x, pos.y, pos.z + 1.2);
-                chair.rotation.y = Math.PI; // Разворачиваем лицом к столу
+                chair.rotate(new Vector3(0, 1, 0), Math.PI);
             }
         }
 
         // 3. Табличка "мокрый пол" (у входа)
-        const signResult = await ImportMeshAsync("psx_wet_floor_sign.glb", scene, { rootUrl: modelsPath });
+        const signResult = await ImportMeshAsync("psx_wet_floor_sign.glb", this.scene, { rootUrl: modelsPath });
         const sign = signResult.meshes[0];
         if (sign) {
             sign.position = new Vector3(1.5, 0, -8.5);
+        }
+
+        const stickmanResult = await ImportMeshAsync("employee_stickman.glb", this.scene, { rootUrl: modelsPath });
+        const stickman = stickmanResult.meshes[0];
+        if (stickman) {
+          stickman.position = new Vector3(0, 0, 8.0);
+          stickman.rotate(new Vector3(0, 1, 0), Math.PI * 3 / 2);
+          stickman.scaling = new Vector3(1.25, 1.25, 1.25);
+          this.npc = stickman;
+
+          stickmanResult.meshes.forEach((mesh) => {
+              mesh.metadata = { interactable: true, action: "Start Conversation" };
+          });
         }
 
         console.log("Все объекты успешно загружены и расставлены!");

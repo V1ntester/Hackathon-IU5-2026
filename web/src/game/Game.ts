@@ -25,6 +25,7 @@ export class Game {
 
   private readonly canvas: HTMLCanvasElement;
   private readonly movementTimer: ReturnType<typeof setInterval>;
+  private npcNearby = false;
 
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     this.canvas = canvas;
@@ -61,10 +62,12 @@ export class Game {
         void this.online.loadScenarios();
       },
     });
-    this.online = new OnlinePanel(uiRoot, this.network, this.toggleNpc);
+    this.online = new OnlinePanel(uiRoot, this.network, () => this.setNpcOpen(false));
     // Интервал выше 50 мс: сервер ограничивает частоту принятых перемещений.
     this.movementTimer = setInterval(this.sendPosition, 80);
     void this.network.connect();
+
+    this.scene.onBeforeRenderObservable.add(this.checkNpcProximity);
 
     this.setupRenderPipeline();
 
@@ -87,6 +90,7 @@ export class Game {
     window.removeEventListener("keydown", this.onInteractionKey);
 
     clearInterval(this.movementTimer);
+    this.scene.onBeforeRenderObservable.removeCallback(this.checkNpcProximity);
     this.network.dispose();
     this.remotePlayers.dispose();
     this.online.dispose();
@@ -159,26 +163,54 @@ export class Game {
     this.network.sendMove({ x, y, z }, this.player.camera.rotation.y);
   };
 
-  private readonly toggleNpc = (): void => {
-    const open = !this.online.isOpen;
+  private setNpcOpen(open: boolean): void {
     this.online.setOpen(open);
     this.hud.setInteractionOpen(open);
     if (open) {
       this.player.setEnabled(false);
+      this.hud.hidePrompt();
       if (document.pointerLockElement === this.canvas) document.exitPointerLock();
     }
+  }
+
+  private isNearNpc(): boolean {
+    const npc = this.world.npc;
+    if (!npc || npc.isDisposed()) return false;
+    const position = npc.getAbsolutePosition();
+    const player = this.player.camera.position;
+    // Расстояние по полу: камера находится на высоте глаз, корень NPC — у стоп.
+    return (position.x - player.x) ** 2 + (position.z - player.z) ** 2 <= 3 ** 2;
+  }
+
+  private readonly checkNpcProximity = (): void => {
+    if (!this.isNearNpc()) {
+      this.npcNearby = false;
+      this.hud.hidePrompt();
+      return;
+    }
+    if (document.pointerLockElement !== this.canvas || this.online.isOpen) {
+      this.hud.hidePrompt();
+      return;
+    }
+    if (!this.npcNearby) {
+      this.npcNearby = true;
+      this.setNpcOpen(true);
+      return;
+    }
+    this.hud.showPrompt("E — снова поговорить с NPC");
   };
 
   private readonly onInteractionKey = (event: KeyboardEvent): void => {
     if (event.repeat) return;
     if (event.code === "Escape" && this.online.isOpen) {
-      this.toggleNpc();
+      this.setNpcOpen(false);
       return;
     }
     if (event.target instanceof HTMLElement && event.target.closest("input, textarea, select, button")) return;
-    if (event.code === "KeyE") {
+    if (event.code === "KeyE" && document.pointerLockElement === this.canvas && this.isNearNpc()) {
       event.preventDefault();
-      this.toggleNpc();
+      this.npcNearby = true;
+      this.setNpcOpen(true);
     }
   };
 }
