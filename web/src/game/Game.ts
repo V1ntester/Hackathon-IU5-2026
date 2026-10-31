@@ -40,9 +40,11 @@ export class Game {
     this.scene.gravity = new Vector3(0, -0.35, 0);
 
     this.world = new Office(this.scene);
-    this.player = new FirstPersonController(this.scene, canvas, this.world.spawn);
     this.hud = new Hud(uiRoot, this.requestPointerLock);
 
+    this.player = new FirstPersonController(this.scene, canvas, this.world.spawn);
+    this.player.setupInteraction(this.scene, this.hud);
+    
     this.setupRenderPipeline();
 
     document.addEventListener("pointerlockchange", this.onPointerLockChange);

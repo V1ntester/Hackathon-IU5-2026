@@ -1,4 +1,4 @@
-import { Scene, UniversalCamera, Vector3 } from "@babylonjs/core";
+import { Scene, AbstractMesh, UniversalCamera, Vector3 } from "@babylonjs/core";
 import { PLAYER, SPAWN } from "../game/config";
 
 /**
@@ -15,6 +15,8 @@ export class FirstPersonController {
   private readonly baseFov = PLAYER.fov;
 
   private active = false;
+
+  private currentInteractable: AbstractMesh | null = null;
 
   constructor(scene: Scene, canvas: HTMLCanvasElement, spawn: Vector3) {
     this.scene = scene;
@@ -77,6 +79,41 @@ export class FirstPersonController {
     window.removeEventListener("keyup", this.onKeyUp);
     window.removeEventListener("blur", this.onWindowBlur);
     this.camera.dispose();
+  }
+
+  setupInteraction(scene: Scene, hud: any) { // hud — ваш класс для интерфейса
+      scene.onBeforeRenderObservable.add(() => {
+          const camera = scene.activeCamera;
+          if (!camera) return;
+
+          // Создаем луч из камеры вперед на расстояние 3 метра (дистанция взаимодействия)
+          const ray = camera.getForwardRay(3); 
+          
+          // Пускаем луч в сцену (фильтруем только те меши, у которых есть metadata.interactable)
+          const hit = scene.pickWithRay(ray, (mesh) => {
+              return mesh.metadata?.interactable === true;
+          });
+
+          if (hit && hit.hit && hit.pickedMesh) {
+              this.currentInteractable = hit.pickedMesh;
+              // Показываем надпись на экране
+              hud.showPrompt("Нажмите E");
+          } else {
+              this.currentInteractable = null;
+              // Скрываем надпись
+              hud.hidePrompt();
+          }
+      });
+
+      // Слушатель нажатия клавиши E
+      window.addEventListener("keydown", (event) => {
+          if (event.code === "KeyE" && this.currentInteractable) {
+              const action = this.currentInteractable.metadata?.action;
+              if (action === "Start Conversation") {
+                  console.log("Действие: Начинаем диалог!");
+              }
+          }
+      });
   }
 
   private readonly update = (): void => {
