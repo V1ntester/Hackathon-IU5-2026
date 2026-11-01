@@ -1,4 +1,5 @@
 import asyncio
+from typing import Literal
 from urllib.parse import urlsplit
 
 import httpx
@@ -53,12 +54,18 @@ class AIInferenceService:
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
             raise HTTPException(502, "Не удалось подтвердить контекст llama.cpp через /props") from exc
 
-    async def count_tokens(self, messages: list[dict]) -> int:
+    async def count_tokens(self, messages: list[dict], tools: list[dict] | None = None,
+                           tool_choice: Literal["auto", "required"] = "auto") -> int:
+        payload = {
+            "messages": messages, "add_generation_prompt": True,
+            "chat_template_kwargs": {"enable_thinking": False},
+        }
+        if tools is not None:
+            payload["tools"] = tools
+            payload["tool_choice"] = tool_choice
+            payload["parallel_tool_calls"] = False
         async with self.qwen_slots:
-            rendered = await self._request(f"{self.llama_base}/apply-template", json={
-                "messages": messages, "add_generation_prompt": True,
-                "chat_template_kwargs": {"enable_thinking": False},
-            })
+            rendered = await self._request(f"{self.llama_base}/apply-template", json=payload)
             prompt = rendered.get("prompt")
             if not isinstance(prompt, str) or not prompt:
                 raise HTTPException(502, "llama.cpp не вернул chat template")
@@ -71,62 +78,78 @@ class AIInferenceService:
         return len(tokens)
 
     async def generate(self, messages: list[dict], reserve: int = 192, temperature: float = 0.7) -> str:
-        async with self.qwen_slots:
-            result = await self._request(self.settings.qwen_url, json={
-                "model": self.settings.qwen_model,
-                "messages": messages,
-                "max_tokens": reserve,
-                "temperature": temperature,
-                "stream": False,
-                "chat_template_kwargs": {"enable_thinking": False},
-            })
-        try:
-            if result["choices"][0].get("finish_reason") != "stop":
-                raise ValueError("Incomplete generation")
-            reply = result["choices"][0]["message"]["content"]
+        assistant_message = await self.chat_completion(messages, reserve=reserve, temperature=temperature)
+        return assistant_message["content"].strip()
+
     async def chat_completion(
         self,
         messages: list[dict],
         tools: list[dict] | None = None,
+        *,
+        reserve: int = 192,
+        temperature: float = 0.7,
+        tool_choice: Literal["auto", "required"] = "auto",
     ) -> dict:
         payload = {
             "model": self.settings.qwen_model,
             "messages": messages,
-            "max_tokens": 192,
-            "temperature": 0.7,
+            "max_tokens": reserve,
+            "temperature": temperature,
             "stream": False,
             "chat_template_kwargs": {"enable_thinking": False},
         }
         if tools is not None:
             payload["tools"] = tools
-            payload["tool_choice"] = "auto"
+            payload["tool_choice"] = tool_choice
+            payload["parallel_tool_calls"] = False
+            if tool_choice == "required":
+                # Выбор действия не должен зависеть от прогретого KV-префикса
+                # предыдущей реплики. Обычные ответы и оценки сохраняют настройки.
+                payload["cache_prompt"] = False
 
         async with self.qwen_slots:
             result = await self._request(self.settings.qwen_url, json=payload)
         try:
-            assistant_message = result["choices"][0]["message"]
+            choice = result["choices"][0]
+            if choice["finish_reason"] not in ("stop", "tool_calls"):
+                raise ValueError("Incomplete generation")
+            assistant_message = choice["message"]
             if not isinstance(assistant_message, dict):
                 raise ValueError("Invalid assistant message")
+            content = assistant_message.get("content")
+            if content is not None and not isinstance(content, str):
+                raise ValueError("Invalid assistant content")
+            calls = assistant_message.get("tool_calls")
+            if calls is not None and not isinstance(calls, list):
+                raise ValueError("Invalid tool calls")
+            if calls:
+                if tools is None:
+                    raise ValueError("Unexpected tool call")
+                for call in calls:
+                    if not isinstance(call, dict) or call.get("type") != "function":
+                        raise ValueError("Invalid tool call")
+                    if not isinstance(call.get("id"), str) or not call["id"].strip():
+                        raise ValueError("Missing tool call ID")
+                    function = call.get("function")
+                    if (not isinstance(function, dict)
+                        or not isinstance(function.get("name"), str)
+                        or not isinstance(function.get("arguments"), str)):
+                        raise ValueError("Invalid function call")
+            else:
+                if tool_choice == "required":
+                    raise ValueError("Required tool call is missing")
+                reply = assistant_message.get("content")
+                if choice["finish_reason"] != "stop" or not isinstance(reply, str) or not reply.strip():
+                    raise ValueError("Empty reply")
             return assistant_message
-        except (KeyError, IndexError, TypeError, ValueError) as exc:
-            raise HTTPException(502, "Qwen вернул некорректный ответ") from exc
+        except (KeyError, IndexError, TypeError, ValueError, AttributeError) as exc:
+            raise HTTPException(502, "Qwen вернул пустой, некорректный или незавершённый ответ") from exc
 
     async def chat(self, prompt: str, message: str) -> str:
-        assistant_message = await self.chat_completion([
+        return await self.generate([
             {"role": "system", "content": prompt},
             {"role": "user", "content": message},
         ])
-        try:
-            reply = assistant_message["content"]
-            if not isinstance(reply, str) or not reply.strip():
-                raise ValueError("Empty reply")
-            return reply.strip()
-        except (KeyError, IndexError, TypeError, ValueError) as exc:
-            raise HTTPException(502, "Qwen вернул ответ без текста") from exc
-
-    async def chat_completion(
-        self,
-        messages: list[dict],
 
     async def transcribe(self, audio: bytes, content_type: str, language: str = "auto") -> str:
         async with self.whisper_slots:

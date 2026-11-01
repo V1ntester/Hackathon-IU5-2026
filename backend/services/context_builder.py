@@ -1,4 +1,5 @@
 import json
+from typing import Literal
 
 from fastapi import HTTPException
 
@@ -25,10 +26,15 @@ class ContextBuilder:
     def __init__(self, ai: AIInferenceService):
         self.ai = ai
 
-    async def fits(self, messages: list[dict], reserve: int, limit: int) -> bool:
-        return await self.ai.count_tokens(messages) + reserve + self.ai.settings.context_margin_tokens <= limit
+    async def fits(self, messages: list[dict], reserve: int, limit: int,
+                   tools: list[dict] | None = None,
+                   tool_choice: Literal["auto", "required"] = "auto") -> bool:
+        return await self.ai.count_tokens(messages, tools=tools, tool_choice=tool_choice) + reserve + self.ai.settings.context_margin_tokens <= limit
 
-    async def dialogue(self, role: str, history: list[tuple[str, str]], knowledge: list[dict], message: str) -> tuple[list[dict], list[dict]]:
+    async def dialogue(self, role: str, history: list[tuple[str, str]], knowledge: list[dict], message: str,
+                       tools: list[dict] | None = None,
+                       continuation: list[dict] | None = None,
+                       tool_choice: Literal["auto", "required"] = "auto") -> tuple[list[dict], list[dict]]:
         limit = await self.ai.context_limit()
         history, knowledge = list(history), list(knowledge[:2])
         while True:
@@ -39,7 +45,8 @@ class ContextBuilder:
             for user, assistant in history:
                 messages.extend([{"role": "user", "content": user}, {"role": "assistant", "content": assistant}])
             messages.append({"role": "user", "content": message})
-            if await self.fits(messages, 192, limit):
+            messages.extend(continuation or [])
+            if await self.fits(messages, 192, limit, tools=tools, tool_choice=tool_choice):
                 return messages, [{"id": k["id"], "version": k["version"]} for k in knowledge]
             if history:
                 history.pop(0)

@@ -1,7 +1,6 @@
 import asyncio
-from uuid import uuid4
-
 import json
+from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import update
@@ -20,7 +19,7 @@ from backend.models.world_object import ObjectState
 from backend.services.sessions import ObjectNotFoundError, SessionService
 
 
-LIGHT_TOOL = [{
+LIGHT_TOOLS = [{
     "type": "function",
     "function": {
         "name": "set_light_state",
@@ -43,7 +42,37 @@ LIGHT_TOOL = [{
             "additionalProperties": False,
         },
     },
+}, {
+    "type": "function",
+    "function": {
+        "name": "keep_light_state",
+        "description": (
+            "Оставить свет без изменений, если текущая реплика не просит изменить "
+            "освещение: обычный разговор, вопрос, цитата, обсуждение или запрет действия."
+        ),
+        "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
 }]
+
+LIGHT_INSTRUCTION = (
+    "Ты выбираешь действие освещения для ТЕКУЩЕЙ последней реплики игрока. "
+    "Не отвечай текстом, вызови ровно один инструмент. На каждую новую просьбу "
+    "включить или выключить свет заново вызови set_light_state с нужным целевым "
+    "состоянием, даже если в истории уже есть похожая просьба и подтверждение. "
+    "Ясная косвенная просьба, например «здесь темно, ничего не видно», тоже требует "
+    "set_light_state. История нужна только для понимания ссылок вроде «теперь наоборот»; "
+    "старые подтверждения не выполняют новую просьбу и не доказывают текущее состояние. "
+    "Если текущая реплика не просит менять свет, выбери keep_light_state. "
+    "Обсуждение, цитата и запрет «не выключай свет» не являются просьбой выключить его."
+)
+
+LIGHT_REPLY_INSTRUCTION = (
+    "Результат инструмента в этой реплике — фактический результат сервера. "
+    "Подтверждай изменение света только при ok=true и requested=true. "
+    "При changed=false свет уже был в указанном состоянии, не утверждай, что изменил его. "
+    "При requested=false свет не меняли; продолжи разговор по текущей реплике. "
+    "При ok=false сообщи, что действие не удалось. Не опирайся на старые подтверждения."
+)
 
 
 class PracticeService:
@@ -79,8 +108,7 @@ class PracticeService:
                 history = await conversations.history(conversation_id)
                 knowledge = await KnowledgeService(self.session).search(scenario_id, message)
                 await self.session.commit()
-                messages, used = await ContextBuilder(self.ai).dialogue(role, history, knowledge, message)
-                reply = await self.ai.generate(messages)
+                reply, used = await self._dialogue_reply(role, history, knowledge, message)
                 saved = await self.session.execute(update(DialogueTurn).where(*conditions,
                     DialogueTurn.expires_at > utc_now()).values(reply=reply, status="completed",
                     completed_at=utc_now(), knowledge_used=used))
@@ -98,6 +126,80 @@ class PracticeService:
             if isinstance(exc, TimeoutError):
                 raise HTTPException(504, "Превышен общий срок генерации 300 секунд") from exc
             raise
+
+    async def _dialogue_reply(self, role: str, history: list[tuple[str, str]],
+                              knowledge: list[dict], message: str) -> tuple[str, list[dict]]:
+        builder = ContextBuilder(self.ai)
+        if self.game_session is None:
+            messages, used = await builder.dialogue(role, history, knowledge, message)
+            return await self.ai.generate(messages), used
+
+        light = self.game_session.objects.get("office-light")
+        live_state = light.state.value if light else "unavailable"
+        selection_role = LIGHT_INSTRUCTION + f"\nТекущее состояние света по данным сервера: {live_state}."
+        # Выбор действия отделён от роли NPC и базы знаний. История остаётся
+        # доступна для коротких связанных просьб; решение требуется на каждый ход.
+        messages, _ = await builder.dialogue(selection_role, history, [], message,
+            tools=LIGHT_TOOLS, tool_choice="required")
+        assistant_message = await self.ai.chat_completion(messages, tools=LIGHT_TOOLS,
+            tool_choice="required", temperature=0)
+        calls = assistant_message.get("tool_calls")
+        if not calls or len(calls) != 1:
+            raise HTTPException(502, "Qwen должен выбрать ровно одно действие освещения")
+        call = calls[0]
+        tool_result = self._apply_light_call(call)
+
+        continuation = [
+            {"role": "assistant", "content": None, "tool_calls": calls},
+            {"role": "tool", "tool_call_id": call["id"], "content": json.dumps(tool_result)},
+        ]
+        # Схема инструмента и ответ tool меняют размер prompt. Второй запрос также
+        # проходит токенизацию; сокращаем только прежнюю историю и справку.
+        followup, used = await builder.dialogue(role + "\n\n" + LIGHT_REPLY_INSTRUCTION,
+            history, knowledge, message,
+            continuation=continuation)
+        return await self.ai.generate(followup), used
+
+    def _apply_light_call(self, call: dict) -> dict:
+        function = call["function"]
+        keep = function["name"] == "keep_light_state"
+        state = self._light_state_from_tool_call(call)
+        if keep:
+            try:
+                if json.loads(function["arguments"]) != {}:
+                    raise ValueError("Expected empty arguments")
+            except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                raise HTTPException(502, "Некорректные аргументы keep_light_state") from exc
+        elif state is None:
+            raise HTTPException(502, "Некорректный вызов инструмента освещения")
+        light = self.game_session.objects.get("office-light")
+        if light is None:
+            return {"ok": False, "requested": not keep, "changed": False,
+                    "error": "The office light is unavailable"}
+        if keep:
+            return {"ok": True, "requested": False, "changed": False, "state": light.state.value}
+        try:
+            obj = self.game_session.set_object_state("office-light", state)
+            return {"ok": True, "requested": True, "changed": light.state != obj.state,
+                    "object_id": obj.id, "state": obj.state.value}
+        except ObjectNotFoundError:
+            return {"ok": False, "requested": True, "changed": False,
+                    "error": "The office light is unavailable"}
+
+    @staticmethod
+    def _light_state_from_tool_call(call: object) -> ObjectState | None:
+        if not isinstance(call, dict) or call.get("type") != "function":
+            return None
+        function = call.get("function")
+        if not isinstance(function, dict) or function.get("name") != "set_light_state":
+            return None
+        try:
+            arguments = json.loads(function.get("arguments", ""))
+            if not isinstance(arguments, dict) or set(arguments) != {"state"}:
+                return None
+            return ObjectState(arguments["state"])
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return None
 
     async def transcribe(self, player_id: str, file: UploadFile, language: str = "auto") -> str:
         try:
