@@ -123,7 +123,7 @@ export class Hud {
     this.roomSize.textContent = active ? "10 × 9 м" : "26 × 26 м";
     this.roomName.textContent = active ? "кабинет · интервью" : "офис · 1 этаж";
     this.hint.textContent = active
-      ? "Ответьте на вопрос, чтобы вернуться в офис"
+      ? "Enter — отправить · Shift + Enter — новая строка · E — вернуться в офис"
       : "WASD — движение · Shift — бег · E — взаимодействие · Esc — пауза";
     if (active) this.error.hidden = true;
   }

@@ -35,16 +35,24 @@ export class GameClient {
   constructor(private readonly callbacks: Callbacks) {}
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const response = await fetch(new URL(path, this.base), {
-      ...init,
-      signal: this.abort.signal,
-    });
-    if (!response.ok) {
-      const body: unknown = await response.json().catch(() => null);
-      const detail = body && typeof body === "object" && "detail" in body ? body.detail : null;
-      throw new Error(typeof detail === "string" ? detail : `Ошибка сервера (${response.status})`);
+    const controller = new AbortController();
+    const cancel = (): void => controller.abort();
+    const signals = [this.abort.signal, init.signal];
+    for (const signal of signals) {
+      signal?.addEventListener("abort", cancel, { once: true });
+      if (signal?.aborted) controller.abort();
     }
-    return response.json() as Promise<T>;
+    try {
+      const response = await fetch(new URL(path, this.base), { ...init, signal: controller.signal });
+      if (!response.ok) {
+        const body: unknown = await response.json().catch(() => null);
+        const detail = body && typeof body === "object" && "detail" in body ? body.detail : null;
+        throw new Error(typeof detail === "string" ? detail : `Ошибка сервера (${response.status})`);
+      }
+      return await response.json() as T;
+    } finally {
+      for (const signal of signals) signal?.removeEventListener("abort", cancel);
+    }
   }
 
   async connect(): Promise<void> {
@@ -136,25 +144,27 @@ export class GameClient {
     return true;
   }
 
-  scenarios(): Promise<Scenario[]> {
-    return this.request("/api/scenarios");
+  scenarios(signal?: AbortSignal): Promise<Scenario[]> {
+    return this.request("/api/scenarios", { signal });
   }
 
-  chat(scenarioId: string, message: string): Promise<{ reply: string }> {
+  chat(scenarioId: string, message: string, signal?: AbortSignal): Promise<{ reply: string }> {
     if (!this.playerId) return Promise.reject(new Error("Дождитесь подключения к серверу"));
     return this.request("/api/ai/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ player_id: this.playerId, scenario_id: scenarioId, message }),
+      signal,
     });
   }
 
-  transcribe(file: File): Promise<{ text: string }> {
+  transcribe(file: File, signal?: AbortSignal): Promise<{ text: string }> {
     if (!this.playerId) return Promise.reject(new Error("Дождитесь подключения к серверу"));
     const body = new FormData();
     body.append("player_id", this.playerId);
     body.append("file", file);
-    return this.request("/api/ai/transcribe", { method: "POST", body });
+    body.append("language", "ru");
+    return this.request("/api/ai/transcribe", { method: "POST", body, signal });
   }
 
   dispose(): void {

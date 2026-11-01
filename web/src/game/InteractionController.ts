@@ -3,6 +3,7 @@ import type { Hud } from "../ui/Hud";
 import type { Office } from "../world/Office";
 import { InterviewPanel } from "../ui/InterviewPanel";
 import type { SceneManager } from "./SceneManager";
+import type { GameClient } from "../network/GameClient";
 
 type OfficeInteraction = "door" | "light";
 
@@ -18,8 +19,9 @@ export class InteractionController {
     uiRoot: HTMLElement,
     private readonly requestPointerLock: () => void,
     private readonly requestLightInteraction: () => boolean,
+    client: GameClient,
   ) {
-    this.interviewPanel = new InterviewPanel(uiRoot, this.returnToOffice);
+    this.interviewPanel = new InterviewPanel(uiRoot, client, this.returnToOffice);
     this.scenes.office.onBeforeRenderObservable.add(this.update);
     window.addEventListener("keydown", this.onKeyDown);
   }
@@ -28,6 +30,10 @@ export class InteractionController {
     this.scenes.office.onBeforeRenderObservable.removeCallback(this.update);
     window.removeEventListener("keydown", this.onKeyDown);
     this.interviewPanel.dispose();
+  }
+
+  setConnected(connected: boolean): void {
+    this.interviewPanel.setConnected(connected);
   }
 
   private getNearestInteraction(): OfficeInteraction | null {

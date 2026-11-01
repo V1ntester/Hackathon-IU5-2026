@@ -59,11 +59,11 @@ class AIInferenceService:
         except (KeyError, IndexError, TypeError, ValueError) as exc:
             raise HTTPException(502, "Qwen вернул ответ без текста") from exc
 
-    async def transcribe(self, audio: bytes, content_type: str) -> str:
+    async def transcribe(self, audio: bytes, content_type: str, language: str = "auto") -> str:
         async with self.whisper_slots:
             result = await self._request(self.settings.whisper_url,
                 files={"file": (f"recording.{AUDIO_FORMATS[content_type]}", audio, content_type)},
-                data={"response_format": "json", "language": "auto"},
+                data={"response_format": "json", "language": language},
             )
         value = result.get("text")
         if not isinstance(value, str):

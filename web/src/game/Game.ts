@@ -51,7 +51,10 @@ export class Game {
     this.remotePlayers = new RemotePlayers(this.scene);
     this.online = new OnlinePanel(uiRoot);
     this.network = new GameClient({
-      status: (message) => this.online.setStatus(message),
+      status: (message, connected) => {
+        this.online.setStatus(message);
+        this.interactions.setConnected(connected);
+      },
       state: (players, localId) => {
         this.remotePlayers.sync(players, localId);
         this.online.setPlayerCount(players.length);
@@ -77,6 +80,7 @@ export class Game {
       uiRoot,
       this.requestPointerLock,
       () => this.network.sendInteract("office-light"),
+      this.network,
     );
 
     // Интервал выше 50 мс: сервер ограничивает частоту принятых перемещений.
