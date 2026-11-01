@@ -38,6 +38,7 @@ class CurrentQuestion(BaseModel):
 
 class InterviewState(BaseModel):
     id: str
+    topic: str | None = None
     status: Literal["in_progress", "ready_for_evaluation", "evaluating", "completed", "evaluation_failed"]
     answered: int = Field(ge=0, le=4)
     evaluated: int = Field(ge=0, le=4)

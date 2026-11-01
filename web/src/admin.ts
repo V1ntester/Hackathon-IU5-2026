@@ -13,7 +13,7 @@ root.innerHTML = [
   '  <section class="admin-intro" aria-labelledby="admin-title">',
   '    <p class="admin-eyebrow"><span class="admin-eyebrow-line"></span> Control room</p>',
   '    <h1 id="admin-title">Мир под<br /><span>контролем.</span></h1>',
-  '    <p class="admin-lede">Состояние объектов общей игровой сессии.</p>',
+  '    <p class="admin-lede">Объекты общей игровой сессии и тема интервью.</p>',
   '  </section>',
   '  <section class="admin-content admin-content--connections" aria-labelledby="connections-title">',
   '    <div class="admin-section-heading"><div><p class="admin-overline">Сейчас в игре</p><h2 id="connections-title">Подключения <span class="admin-count" data-count>0</span></h2></div>',
@@ -27,6 +27,12 @@ root.innerHTML = [
   '    <div class="admin-object-list" data-objects aria-live="polite"></div>',
   '    <p class="admin-footnote">Изменения игроков появляются автоматически. Состояние хранится до перезапуска сервера.</p>',
   '  </section>',
+  '  <section class="admin-content" aria-labelledby="interview-topic-title">',
+  '    <div class="admin-section-heading"><div><p class="admin-overline">Интервью и RAG</p><h2 id="interview-topic-title">Тема интервью</h2></div></div>',
+  '    <label class="topic-label" for="interview-topic">Общая тема для новых интервью</label>',
+  '    <select class="topic-select" id="interview-topic" data-topic-select aria-describedby="topic-status" disabled><option>Загрузка тем…</option></select>',
+  '    <p class="admin-footnote" id="topic-status" data-topic-status role="status">Загружаем настройку…</p>',
+  '  </section>',
   '  <footer class="admin-footer"><span>IU5 · ADMIN</span><span>Игровой сервер</span></footer>',
   '</main>',
 ].join("");
@@ -36,10 +42,112 @@ const connectionList = root.querySelector<HTMLElement>("[data-connections]")!;
 const connectionCount = root.querySelector<HTMLElement>("[data-count]")!;
 const message = root.querySelector<HTMLElement>("[data-message]")!;
 const connection = root.querySelector<HTMLElement>("[data-connection]")!;
+const topicSelect = root.querySelector<HTMLSelectElement>("[data-topic-select]")!;
+const topicStatus = root.querySelector<HTMLElement>("[data-topic-status]")!;
 const apiBase = import.meta.env.VITE_BACKEND_URL || window.location.origin;
 let requestInProgress = false;
 let writeInProgress = 0;
 let disposed = false;
+let topicRequestInProgress = false;
+let topicWriteInProgress = false;
+let topicGeneration = 0;
+let topicSettings: InterviewTopicSettings | null = null;
+
+interface InterviewTopicSettings {
+  scenario_id: string;
+  topic: string | null;
+  version: number;
+  topics: { topic: string; question_count: number }[];
+}
+
+function isInterviewTopicSettings(value: unknown): value is InterviewTopicSettings {
+  if (!value || typeof value !== "object") return false;
+  const row = value as Partial<InterviewTopicSettings>;
+  return row.scenario_id === "interview" && (row.topic === null || typeof row.topic === "string") &&
+    typeof row.version === "number" && Number.isInteger(row.version) && row.version >= 0 &&
+    Array.isArray(row.topics) && row.topics.every((item: unknown) => {
+      if (!item || typeof item !== "object") return false;
+      const option = item as { topic?: unknown; question_count?: unknown };
+      return typeof option.topic === "string" && option.topic.length > 0 &&
+        typeof option.question_count === "number" && Number.isInteger(option.question_count) && option.question_count >= 0;
+    });
+}
+
+function renderTopic(settings: InterviewTopicSettings): void {
+  const changed = JSON.stringify(topicSettings) !== JSON.stringify(settings);
+  topicSettings = settings;
+  if (changed) {
+    const options: HTMLOptionElement[] = [];
+    const all = document.createElement("option");
+    all.value = ""; all.textContent = "Все темы"; options.push(all);
+    for (const item of settings.topics) {
+      const option = document.createElement("option");
+      option.value = item.topic; option.textContent = `${item.topic} — вопросов: ${item.question_count}`;
+      options.push(option);
+    }
+    if (settings.topic !== null && !settings.topics.some((item) => item.topic === settings.topic)) {
+      const missing = document.createElement("option");
+      missing.value = settings.topic; missing.textContent = `${settings.topic} — нет активных вопросов`;
+      options.push(missing);
+    }
+    topicSelect.replaceChildren(...options);
+  }
+  topicSelect.value = settings.topic ?? "";
+  topicSelect.disabled = topicWriteInProgress;
+  const count = settings.topic === null
+    ? settings.topics.reduce((sum, item) => sum + item.question_count, 0)
+    : settings.topics.find((item) => item.topic === settings.topic)?.question_count ?? 0;
+  topicStatus.classList.toggle("is-error", count < 4);
+  topicStatus.textContent = count < 4
+    ? `Активных вопросов: ${count}. Для интервью нужно минимум 4 пригодных вопроса. Добавьте вопросы или выберите другую тему.`
+    : "Тема применяется к новым интервью и следующим репликам NPC. Начатые интервью сохраняют свою тему и вопросы.";
+}
+
+async function refreshTopic(): Promise<void> {
+  if (disposed || topicRequestInProgress || topicWriteInProgress) return;
+  topicRequestInProgress = true;
+  const generation = topicGeneration;
+  try {
+    const response = await fetch(new URL("/api/admin/interviews/settings?scenario_id=interview", apiBase), { cache: "no-store" });
+    if (!response.ok) throw new Error(await responseDetail(response));
+    const payload: unknown = await response.json();
+    if (!isInterviewTopicSettings(payload)) throw new Error("Неизвестный формат настроек интервью.");
+    if (!disposed && generation === topicGeneration) renderTopic(payload);
+  } catch (error) {
+    if (!disposed && generation === topicGeneration) {
+      topicStatus.textContent = error instanceof Error ? error.message : "Не удалось загрузить темы.";
+      topicStatus.classList.add("is-error");
+    }
+  } finally {
+    topicRequestInProgress = false;
+  }
+}
+
+async function setTopic(topic: string | null): Promise<void> {
+  if (disposed || topicWriteInProgress) return;
+  topicWriteInProgress = true; topicGeneration++;
+  topicSelect.disabled = true; topicStatus.textContent = "Сохраняем тему…";
+  try {
+    const response = await fetch(new URL("/api/admin/interviews/settings?scenario_id=interview", apiBase), {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic }),
+    });
+    if (!response.ok) throw new Error(await responseDetail(response));
+    const payload: unknown = await response.json();
+    if (!isInterviewTopicSettings(payload)) throw new Error("Неизвестный формат настроек интервью.");
+    if (!disposed) renderTopic(payload);
+  } catch (error) {
+    if (!disposed) {
+      if (topicSettings) renderTopic(topicSettings);
+      topicStatus.textContent = error instanceof Error ? error.message : "Не удалось сохранить тему.";
+      topicStatus.classList.add("is-error");
+    }
+  } finally {
+    topicWriteInProgress = false;
+    if (!disposed) topicSelect.disabled = topicSettings === null;
+  }
+}
+
+topicSelect.addEventListener("change", () => void setTopic(topicSelect.value || null));
 
 function showMessage(text: string, isError = false): void {
   message.textContent = text;
@@ -227,7 +335,8 @@ async function setState(objectId: string, state: WorldObjectState["state"]): Pro
 }
 
 void refresh();
-const poll = window.setInterval(() => void refresh(), 2000);
+void refreshTopic();
+const poll = window.setInterval(() => { void refresh(); void refreshTopic(); }, 2000);
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     disposed = true;
