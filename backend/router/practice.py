@@ -15,7 +15,9 @@ router = APIRouter(tags=["practice"])
 
 @router.post("/api/ai/chat", response_model=ChatResponse)
 async def chat(body: ChatRequest, request: Request, session: Session):
-    reply = await PracticeService(session, request.app.state.ai, settings).chat(
+    reply = await PracticeService(
+        session, request.app.state.ai, settings, request.app.state.game_session,
+    ).chat(
         body.player_id, body.scenario_id, body.message,
     )
     return ChatResponse(reply=reply)
