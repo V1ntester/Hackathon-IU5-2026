@@ -7,7 +7,6 @@ export class Hud {
   private readonly buttonLabel: HTMLElement;
   private readonly error: HTMLElement;
   private readonly promptElement: HTMLElement;
-  private readonly roomSize: HTMLElement;
   private readonly roomName: HTMLElement;
   private readonly hint: HTMLElement;
 
@@ -23,24 +22,21 @@ export class Hud {
       <div class="hud__prompt" style="position: absolute; top: 58%; left: 50%; transform: translate(-50%, -50%); color: white; font-family: sans-serif; font-size: 16px; background: rgba(0,0,0,0.6); padding: 6px 14px; border-radius: 4px; display: none; pointer-events: none;"></div>
 
       <header class="hud__brand">
-        <span class="hud__mark">PH</span>
         <span class="hud__brand-copy">
-          <strong>Corporate HQ</strong>
-          <span>прототип сцены</span>
+          <strong>ЗаявиСебя</strong>
         </span>
       </header>
       <div class="hud__meta">
-        <span data-room-size>26 × 26 м</span>
-        <span data-room-name>офис · 1 этаж</span>
+        <span data-room-name>Офис</span>
       </div>
       <div class="hud__hint">WASD — движение&ensp;·&ensp;Shift — бег&ensp;·&ensp;E — взаимодействие&ensp;·&ensp;Esc — пауза</div>
       <section class="hud__overlay" aria-label="Старт">
         <div class="start">
-          <p class="start__eyebrow">Прототип · октябрь 2026</p>
+          <p class="start__eyebrow">Игровой тренажёр собеседований</p>
           <h1 class="start__title">Офис</h1>
           <p class="start__text">
-            Квадратный опенспейс 26 × 26 метров. Подойдите к двери на задней
-            стене и нажмите E, чтобы перейти в кабинет для интервью.
+            Практикуйте собеседования в виртуальном офисе: общайтесь с персонажами
+            и оттачивайте ответы в спокойной обстановке.
           </p>
           <button class="start__button" type="button">
             <span class="start__button-label">Войти</span>
@@ -67,12 +63,11 @@ export class Hud {
     const buttonLabel = root.querySelector<HTMLElement>(".start__button-label");
     const error = root.querySelector<HTMLElement>(".start__error");
     const promptElement = root.querySelector<HTMLElement>(".hud__prompt");
-    const roomSize = root.querySelector<HTMLElement>("[data-room-size]");
     const roomName = root.querySelector<HTMLElement>("[data-room-name]");
     const hint = root.querySelector<HTMLElement>(".hud__hint");
 
     if (!overlay || !eyebrow || !title || !description || !buttonLabel || !error || !promptElement ||
-        !roomSize || !roomName || !hint) {
+        !roomName || !hint) {
       throw new Error("HUD: не удалось создать разметку");
     }
 
@@ -83,7 +78,6 @@ export class Hud {
     this.buttonLabel = buttonLabel;
     this.error = error;
     this.promptElement = promptElement;
-    this.roomSize = roomSize;
     this.roomName = roomName;
     this.hint = hint;
 
@@ -121,8 +115,7 @@ export class Hud {
     this.root.classList.toggle("is-interview", active);
     this.root.classList.remove("is-playing");
     this.overlay.setAttribute("aria-hidden", active ? "true" : "false");
-    this.roomSize.textContent = active ? "10 × 9 м" : "26 × 26 м";
-    this.roomName.textContent = active ? "кабинет · интервью" : "офис · 1 этаж";
+    this.roomName.textContent = active ? "Сценарий" : "Офис";
     this.hint.textContent = active
       ? "Кабинет интервью · E — вернуться в офис"
       : "WASD — движение · Shift — бег · E — взаимодействие · Esc — пауза";
