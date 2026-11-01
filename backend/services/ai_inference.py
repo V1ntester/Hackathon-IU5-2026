@@ -22,7 +22,7 @@ class AIInferenceService:
     def __init__(self, client: httpx.AsyncClient, settings: Settings):
         self.client = client
         self.settings = settings
-        self.qwen_slots = asyncio.Semaphore(2)
+        self.qwen_slots = asyncio.Semaphore(1)
         self.whisper_slots = asyncio.Semaphore(2)
 
     async def _request(self, url: str, **kwargs) -> dict:
@@ -46,7 +46,7 @@ class AIInferenceService:
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": message},
                 ],
-                "max_tokens": 256,
+                "max_tokens": 192,
                 "temperature": 0.7,
                 "stream": False,
                 "chat_template_kwargs": {"enable_thinking": False},

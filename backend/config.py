@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://game:game@localhost:5435/interview_game"
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     qwen_url: str = "http://localhost:8081/v1/chat/completions"
-    qwen_model: str = "Qwen3-0.6B"
+    qwen_model: str = "Qwen3-4B-Instruct-2507"
     whisper_url: str = "http://localhost:8082/inference"
     ai_timeout_seconds: float = Field(default=120, gt=0)
     max_audio_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
