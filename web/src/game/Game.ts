@@ -117,7 +117,7 @@ export class Game {
   }
 
   private readonly requestPointerLock = (): void => {
-    if (this.scenes.isInterviewActive) return;
+    if (this.scenes.isInterviewActive || this.interactions.isConversationOpen) return;
     if (document.pointerLockElement === this.canvas) return;
 
     try {
@@ -133,7 +133,7 @@ export class Game {
   };
 
   private readonly onPointerLockChange = (): void => {
-    if (this.scenes.isInterviewActive) {
+    if (this.scenes.isInterviewActive || this.interactions.isConversationOpen) {
       this.player.setEnabled(false);
       return;
     }

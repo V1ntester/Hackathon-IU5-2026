@@ -24,7 +24,7 @@ export class InteractionController {
     client: GameClient,
   ) {
     this.interviewPanel = new InterviewPanel(uiRoot, this.returnToOffice);
-    this.npcDialog = new NpcDialogPanel(uiRoot, this.closeConversation);
+    this.npcDialog = new NpcDialogPanel(uiRoot, client, this.closeConversation);
     this.scenes.office.onBeforeRenderObservable.add(this.update);
     window.addEventListener("keydown", this.onKeyDown);
   }
@@ -37,11 +37,11 @@ export class InteractionController {
   }
 
   setConnected(connected: boolean): void {
-    this.interviewPanel.setConnected(connected);
+    this.npcDialog.setConnected(connected);
   }
 
-  setConnected(connected: boolean): void {
-    this.interviewPanel.setConnected(connected);
+  get isConversationOpen(): boolean {
+    return this.npcDialog.isOpen;
   }
 
   private getNearestInteraction(): OfficeInteraction | null {
@@ -75,7 +75,10 @@ export class InteractionController {
   }
 
   private readonly update = (): void => {
-    if (this.scenes.isInterviewActive) return;
+    if (this.scenes.isInterviewActive || this.npcDialog.isOpen) {
+      this.hud.hidePrompt();
+      return;
+    }
     const interaction = document.pointerLockElement === this.canvas
       ? this.getNearestInteraction()
       : null;
@@ -87,7 +90,7 @@ export class InteractionController {
   };
 
   private enterInterview(): void {
-    if (this.scenes.isInterviewActive) return;
+    if (this.scenes.isInterviewActive || this.npcDialog.isOpen) return;
 
     this.scenes.enterInterview();
     this.hud.setInterviewMode(true);
@@ -97,6 +100,7 @@ export class InteractionController {
   }
 
   private openConversation(): void {
+    if (this.scenes.isInterviewActive || this.npcDialog.isOpen) return;
     this.world.npcs.startConversation();
     this.player.setEnabled(false);
     this.hud.setConversationOpen(true);
