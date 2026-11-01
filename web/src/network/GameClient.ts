@@ -1,6 +1,7 @@
 import { authFetch, ensureAuth, sessionId } from "../auth";
 import { isWorldObjectState, type WorldObjectState } from "./WorldObjectState";
 import { isServerEvent, type ServerEvent } from "./ServerEvent";
+import { createRequestId } from "./requestId";
 
 export interface PlayerState {
   id: string;
@@ -217,7 +218,7 @@ export class GameClient {
     if (fresh) sessionStorage.removeItem(key);
     const saved = JSON.parse(sessionStorage.getItem(key) || "null") as { id?: string; request: string } | null;
     if (saved?.id) return saved.id;
-    const request = saved?.request ?? crypto.randomUUID();
+    const request = saved?.request ?? createRequestId();
     sessionStorage.setItem(key, JSON.stringify({ request }));
     const result = await this.post<{ id: string }>("/api/conversations", {
       ...this.identity(scenarioId), request_id: request });
@@ -235,7 +236,7 @@ export class GameClient {
     if (fresh) sessionStorage.removeItem(key);
     const saved = JSON.parse(sessionStorage.getItem(key) || "null") as { id?: string; request: string } | null;
     if (saved?.id) return this.interviewState(scenarioId, saved.id);
-    const request = saved?.request ?? crypto.randomUUID();
+    const request = saved?.request ?? createRequestId();
     sessionStorage.setItem(key, JSON.stringify({ request }));
     const state = await this.post<InterviewState>("/api/interviews", { ...this.identity(scenarioId), request_id: request });
     const latest = JSON.parse(sessionStorage.getItem(key) || "null") as { request?: string } | null;

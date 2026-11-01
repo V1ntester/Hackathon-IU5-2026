@@ -1,5 +1,6 @@
 import type { GameClient, DialogueTurn } from "../network/GameClient";
 import { VoiceRecorder } from "../player/VoiceRecorder";
+import { createRequestId } from "../network/requestId";
 
 const SCENARIO_ID = "interview";
 
@@ -161,7 +162,7 @@ export class NpcDialogPanel {
     const message = this.input.value.trim();
     if (!message || [...message].length > 1000) return;
     const id = this.conversationId, generation = this.generation;
-    const pending = this.pending?.message === message ? this.pending : { request: crypto.randomUUID(), message };
+    const pending = this.pending?.message === message ? this.pending : { request: createRequestId(), message };
     this.pending = pending;
     sessionStorage.setItem(this.pendingKey(), JSON.stringify(pending));
     this.busy = true; this.controls(); this.status.textContent = "Готовит ответ…";

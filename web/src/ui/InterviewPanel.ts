@@ -1,4 +1,5 @@
 import type { GameClient, InterviewState } from "../network/GameClient";
+import { createRequestId } from "../network/requestId";
 
 const SCENARIO_ID = "interview";
 
@@ -115,7 +116,7 @@ export class InterviewPanel {
     const generation = this.generation;
     const key = this.client.practiceKey(`answer:${state.id}:${question.position}`, SCENARIO_ID);
     const saved = JSON.parse(sessionStorage.getItem(key) || "null") as { request: string; answer: string } | null;
-    const pending = saved?.answer === answer ? saved : { request: crypto.randomUUID(), answer };
+    const pending = saved?.answer === answer ? saved : { request: createRequestId(), answer };
     sessionStorage.setItem(key, JSON.stringify(pending));
     this.busy = true; this.controls();
     try {
