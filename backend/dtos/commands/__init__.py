@@ -6,8 +6,8 @@ from pydantic import Field
 
 from backend.dtos.commands.base import Command
 from backend.dtos.commands.move import MoveCommand
+from backend.dtos.commands.interact import InteractCommand
 
-# Extend this type with a union when another command is introduced.
-UserCommand = Annotated[MoveCommand, Field(discriminator="type")]
+UserCommand = Annotated[MoveCommand | InteractCommand, Field(discriminator="type")]
 
-__all__ = ["Command", "MoveCommand", "UserCommand"]
+__all__ = ["Command", "MoveCommand", "InteractCommand", "UserCommand"]
