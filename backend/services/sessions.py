@@ -9,7 +9,7 @@ from backend.dtos import MoveMessage
 
 
 @dataclass
-class Peer:
+class SessionParticipant:
     websocket: WebSocket
     player_id: str
     display_name: str
@@ -31,32 +31,32 @@ class Peer:
                 pass
 
 
-class World:
-    """Один мир на один процесс; методы без await атомарны в event loop."""
+class SessionService:
+    """Одна общая игровая сессия на процесс; методы без await атомарны в event loop."""
 
     def __init__(self):
-        self.peers: dict[str, Peer] = {}
+        self.participants: dict[str, SessionParticipant] = {}
         self.revision = 0
 
-    def connect(self, peer: Peer) -> bool:
-        if peer.player_id in self.peers:
+    def connect(self, participant: SessionParticipant) -> bool:
+        if participant.player_id in self.participants:
             return False
-        self.peers[peer.player_id] = peer
+        self.participants[participant.player_id] = participant
         self.broadcast()
         return True
 
-    def disconnect(self, peer: Peer):
-        if self.peers.get(peer.player_id) is peer:
-            del self.peers[peer.player_id]
+    def disconnect(self, participant: SessionParticipant):
+        if self.participants.get(participant.player_id) is participant:
+            del self.participants[participant.player_id]
             self.broadcast()
 
-    def move(self, peer: Peer, message: MoveMessage):
+    def move(self, participant: SessionParticipant, message: MoveMessage):
         now = monotonic()
-        if now - peer.last_move < 0.05:
+        if now - participant.last_move < 0.05:
             return
-        peer.last_move = now
-        peer.position = message.position.model_dump()
-        peer.rotation_y = message.rotation_y
+        participant.last_move = now
+        participant.position = message.position.model_dump()
+        participant.rotation_y = message.rotation_y
         self.broadcast()
 
     def broadcast(self):
@@ -65,13 +65,13 @@ class World:
             "type": "state",
             "revision": self.revision,
             "players": [
-                {"id": peer.player_id, "display_name": peer.display_name,
-                 "position": peer.position, "rotation_y": peer.rotation_y}
-                for peer in self.peers.values()
+                {"id": participant.player_id, "display_name": participant.display_name,
+                 "position": participant.position, "rotation_y": participant.rotation_y}
+                for participant in self.participants.values()
             ],
         }
-        for peer in self.peers.values():
+        for participant in self.participants.values():
             # Полный снимок заменяет устаревший: медленный клиент не тормозит мир.
-            if peer.snapshots.full():
-                peer.snapshots.get_nowait()
-            peer.snapshots.put_nowait(snapshot)
+            if participant.snapshots.full():
+                participant.snapshots.get_nowait()
+            participant.snapshots.put_nowait(snapshot)

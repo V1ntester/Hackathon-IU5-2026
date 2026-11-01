@@ -18,7 +18,7 @@ AUDIO_FORMATS = {
 }
 
 
-class AIService:
+class AIInferenceService:
     def __init__(self, client: httpx.AsyncClient, settings: Settings):
         self.client = client
         self.settings = settings
