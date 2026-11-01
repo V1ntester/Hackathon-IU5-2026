@@ -85,6 +85,8 @@ export class Game {
       this.network,
     );
 
+    this.scene.onBeforeRenderObservable.add(this.updateOfficePhysics);
+
     // Интервал выше 50 мс: сервер ограничивает частоту принятых перемещений.
     this.movementTimer = setInterval(this.sendPosition, 80);
     this.fpsTimer = setInterval(() => this.network.sendFps(this.engine.getFps()), 2000);
@@ -107,6 +109,7 @@ export class Game {
 
     clearInterval(this.movementTimer);
     clearInterval(this.fpsTimer);
+    this.scene.onBeforeRenderObservable.removeCallback(this.updateOfficePhysics);
     this.interactions.dispose();
     this.network.dispose();
     this.remotePlayers.dispose();
@@ -118,6 +121,11 @@ export class Game {
     this.scene.dispose();
     this.engine.dispose();
   }
+
+  private readonly updateOfficePhysics = (): void => {
+    const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.05);
+    this.world.updatePhysics(dt, this.player.camera.position, this.player.camera.cameraDirection);
+  };
 
   private readonly requestPointerLock = (): void => {
     if (this.scenes.isInterviewActive || this.interactions.isConversationOpen) return;

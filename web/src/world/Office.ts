@@ -14,6 +14,7 @@ import { ASSETS_URL, PLAYER, SPAWN, WORLD } from "../game/config";
 import { createLighting, type OfficeLighting } from "./lighting";
 import { createMaterials, type OfficeMaterials } from "./materials";
 import { OfficeNpcs } from "./OfficeNpcs";
+import { PushableSign } from "./PushableSign";
 
 const TOTAL_WIDTH = WORLD.size + WORLD.wallThickness * 2;
 
@@ -31,12 +32,13 @@ export class Office {
   readonly spawn: Vector3;
   readonly materials: OfficeMaterials;
   readonly npcs: OfficeNpcs;
-  readonly interviewDoorPosition = new Vector3(0, 0, -13);
-  readonly lightSwitchPosition = new Vector3(1.35, 1.15, -12.97);
+  readonly interviewDoorPosition = new Vector3(-0.55, 0, -13);
+  readonly lightSwitchPosition = new Vector3(1.325, 1.4, -12.97);
   isLightOn = true;
 
   private readonly scene: Scene;
   private readonly lighting: OfficeLighting;
+  private pushableSign: PushableSign | null = null;
 
   constructor(scene: Scene) {
     this.scene = scene;
@@ -89,6 +91,10 @@ export class Office {
     this.materials.lightPanel.emissiveColor = this.isLightOn
       ? new Color3(2.6, 2.45, 2.15)
       : Color3.Black();
+  }
+
+  updatePhysics(dt: number, playerPosition: Vector3, playerDisplacement: Vector3): void {
+    this.pushableSign?.update(dt, playerPosition, playerDisplacement);
   }
 
   private buildFloor(): void {
@@ -450,22 +456,21 @@ export class Office {
 
   async setupOfficeProps(): Promise<void> {
     try {
-      const doorResult = await ImportMeshAsync("low_poly_door.glb", this.scene, { rootUrl: ASSETS_URL });
-      enableCollisions(doorResult.meshes);
+      const doorResult = await ImportMeshAsync("door.glb", this.scene, { rootUrl: ASSETS_URL });
       const door = doorResult.meshes[0];
       if (door) {
         door.position = this.interviewDoorPosition.clone();
-        door.position.y = 1.5;
+        door.scaling.setAll(0.0145);
         door.metadata = { interactable: true, action: "Enter Interview" };
       }
 
       const switchResult = await ImportMeshAsync("light_switch.glb", this.scene, { rootUrl: ASSETS_URL });
-      enableCollisions(switchResult.meshes);
       const lightSwitch = switchResult.meshes[0];
       if (lightSwitch) {
         lightSwitch.name = "officeLightSwitch";
         lightSwitch.position = this.lightSwitchPosition.clone();
         lightSwitch.scaling.setAll(1.5);
+        lightSwitch.rotate(new Vector3(0, 1, 0), Math.PI);
         for (const mesh of switchResult.meshes) {
           mesh.metadata = { interactable: true, action: "Toggle Light" };
         }
@@ -507,9 +512,11 @@ export class Office {
       const signResult = await ImportMeshAsync("psx_wet_floor_sign.glb", this.scene, {
         rootUrl: ASSETS_URL,
       });
-      enableCollisions(signResult.meshes);
       const sign = signResult.meshes[0];
-      if (sign) sign.position = new Vector3(1.5, 0, -8.5);
+      if (sign) {
+        sign.position = new Vector3(1.5, 0, -8.5);
+        this.pushableSign = new PushableSign(sign, this.scene);
+      }
 
       console.log("Все объекты успешно загружены и расставлены!");
     } catch (error) {
