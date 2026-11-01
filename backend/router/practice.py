@@ -19,6 +19,8 @@ async def chat(body: ChatRequest, request: Request, session: Session):
         session, request.app.state.ai, settings, request.app.state.game_session,
     ).chat(
         body.player_id, body.scenario_id, body.message,
+        str(body.conversation_id) if body.conversation_id else None,
+        str(body.request_id) if body.request_id else None,
     )
     return ChatResponse(reply=reply)
 

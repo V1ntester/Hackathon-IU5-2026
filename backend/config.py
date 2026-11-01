@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     allow_lan_websocket_origins: bool = False
     qwen_url: str = "http://localhost:8081/v1/chat/completions"
     qwen_model: str = "Qwen3-4B-Instruct-2507"
+    qwen_context_tokens: int = Field(default=4096, ge=640)
+    context_margin_tokens: int = Field(default=128, ge=128)
     whisper_url: str = "http://localhost:8082/inference"
     ai_timeout_seconds: float = Field(default=120, gt=0)
     max_audio_bytes: int = Field(default=10 * 1024 * 1024, gt=0)

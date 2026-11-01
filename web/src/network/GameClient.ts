@@ -15,6 +15,23 @@ export interface Scenario {
   description: string;
 }
 
+export interface DialogueTurn {
+  sequence: number;
+  request_id: string;
+  message: string;
+  reply: string | null;
+  status: "pending" | "completed" | "failed";
+}
+
+export interface InterviewState {
+  id: string;
+  status: "in_progress" | "ready_for_evaluation" | "evaluating" | "completed" | "evaluation_failed";
+  answered: number;
+  evaluated: number;
+  total: number;
+  current_question: { position: number; text: string } | null;
+}
+
 interface Callbacks {
   status: (message: string, connected: boolean) => void;
   state: (players: PlayerState[], localId: string) => void;
@@ -60,7 +77,8 @@ export class GameClient {
     this.connecting = true;
     this.callbacks.status("Подключение к серверу…", false);
     try {
-      // Профиль принадлежит экземпляру страницы: две вкладки получают разные UUID.
+      // sessionStorage сохраняет гостя при обновлении страницы в этой вкладке.
+      this.playerId ??= sessionStorage.getItem(`guest:${this.base.origin}`);
       if (!this.playerId) {
         const player = await this.request<{ id: string }>("/api/players", {
           method: "POST",
@@ -68,6 +86,7 @@ export class GameClient {
           body: JSON.stringify({ display_name: "Гость" }),
         });
         this.playerId = player.id;
+        sessionStorage.setItem(`guest:${this.base.origin}`, player.id);
       }
       if (this.disposed) return;
       const url = new URL(`/ws/${this.playerId}`, this.base);
@@ -160,14 +179,81 @@ export class GameClient {
     return this.request("/api/scenarios", { signal });
   }
 
-  chat(scenarioId: string, message: string, signal?: AbortSignal): Promise<{ reply: string }> {
+  chat(scenarioId: string, message: string, conversationId: string, requestId: string, signal?: AbortSignal): Promise<{ reply: string }> {
     if (!this.playerId) return Promise.reject(new Error("Дождитесь подключения к серверу"));
     return this.request("/api/ai/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ player_id: this.playerId, scenario_id: scenarioId, message }),
+      body: JSON.stringify({ player_id: this.playerId, scenario_id: scenarioId, message,
+        conversation_id: conversationId, request_id: requestId }),
       signal,
     });
+  }
+
+  practiceKey(kind: string, scenarioId: string): string {
+    if (!this.playerId) throw new Error("Дождитесь подключения к серверу");
+    return `${this.base.origin}:${this.playerId}:${scenarioId}:${kind}`;
+  }
+
+  private identity(scenarioId: string): { player_id: string; scenario_id: string } {
+    if (!this.playerId) throw new Error("Дождитесь подключения к серверу");
+    return { player_id: this.playerId, scenario_id: scenarioId };
+  }
+
+  private post<T>(path: string, body: object, signal?: AbortSignal): Promise<T> {
+    return this.request(path, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body), signal });
+  }
+
+  private identityQuery(scenarioId: string): string {
+    return new URLSearchParams(this.identity(scenarioId)).toString();
+  }
+
+  async conversation(scenarioId: string, fresh = false): Promise<string> {
+    const key = this.practiceKey("conversation", scenarioId);
+    if (fresh) sessionStorage.removeItem(key);
+    const saved = JSON.parse(sessionStorage.getItem(key) || "null") as { id?: string; request: string } | null;
+    if (saved?.id) return saved.id;
+    const request = saved?.request ?? crypto.randomUUID();
+    sessionStorage.setItem(key, JSON.stringify({ request }));
+    const result = await this.post<{ id: string }>("/api/conversations", {
+      ...this.identity(scenarioId), request_id: request });
+    const latest = JSON.parse(sessionStorage.getItem(key) || "null") as { request?: string } | null;
+    if (latest?.request === request) sessionStorage.setItem(key, JSON.stringify({ request, id: result.id }));
+    return result.id;
+  }
+
+  turns(scenarioId: string, id: string, after = 0): Promise<DialogueTurn[]> {
+    return this.request(`/api/conversations/${id}/turns?${this.identityQuery(scenarioId)}&after=${after}&limit=100`);
+  }
+
+  async interview(scenarioId: string, fresh = false): Promise<InterviewState> {
+    const key = this.practiceKey("interview", scenarioId);
+    if (fresh) sessionStorage.removeItem(key);
+    const saved = JSON.parse(sessionStorage.getItem(key) || "null") as { id?: string; request: string } | null;
+    if (saved?.id) return this.interviewState(scenarioId, saved.id);
+    const request = saved?.request ?? crypto.randomUUID();
+    sessionStorage.setItem(key, JSON.stringify({ request }));
+    const state = await this.post<InterviewState>("/api/interviews", { ...this.identity(scenarioId), request_id: request });
+    const latest = JSON.parse(sessionStorage.getItem(key) || "null") as { request?: string } | null;
+    if (latest?.request === request) sessionStorage.setItem(key, JSON.stringify({ request, id: state.id }));
+    return state;
+  }
+
+  interviewState(scenarioId: string, id: string): Promise<InterviewState> {
+    return this.request(`/api/interviews/${id}?${this.identityQuery(scenarioId)}`);
+  }
+
+  answer(scenarioId: string, id: string, position: number, answer: string, requestId: string): Promise<InterviewState> {
+    return this.post(`/api/interviews/${id}/answers`, { ...this.identity(scenarioId), position, answer, request_id: requestId });
+  }
+
+  evaluate(scenarioId: string, id: string, retry = false): Promise<InterviewState> {
+    return this.post(`/api/interviews/${id}/${retry ? "retry-evaluation" : "evaluate"}`, this.identity(scenarioId));
+  }
+
+  report(scenarioId: string, id: string): Promise<{ status: string; report_text?: string }> {
+    return this.request(`/api/interviews/${id}/report?${this.identityQuery(scenarioId)}`);
   }
 
   transcribe(file: File, signal?: AbortSignal): Promise<{ text: string }> {

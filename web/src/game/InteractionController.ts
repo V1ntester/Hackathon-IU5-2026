@@ -23,7 +23,7 @@ export class InteractionController {
     private readonly requestLightInteraction: () => boolean,
     client: GameClient,
   ) {
-    this.interviewPanel = new InterviewPanel(uiRoot, this.returnToOffice);
+    this.interviewPanel = new InterviewPanel(uiRoot, client, this.returnToOffice);
     this.npcDialog = new NpcDialogPanel(uiRoot, client, this.closeConversation);
     this.scenes.office.onBeforeRenderObservable.add(this.update);
     window.addEventListener("keydown", this.onKeyDown);
@@ -38,6 +38,7 @@ export class InteractionController {
 
   setConnected(connected: boolean): void {
     this.npcDialog.setConnected(connected);
+    this.interviewPanel.setConnected(connected);
   }
 
   get isConversationOpen(): boolean {
