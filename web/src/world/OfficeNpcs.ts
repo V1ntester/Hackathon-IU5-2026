@@ -1,5 +1,9 @@
 import {
   ImportMeshAsync,
+  Color3,
+  DynamicTexture,
+  MeshBuilder,
+  StandardMaterial,
   Mesh,
   TransformNode,
   Vector3,
@@ -37,6 +41,10 @@ export class OfficeNpcs {
   private greeter: OfficeNpc | null = null;
   private watchers: OfficeNpc[] = [];
   private conversationStarted = false;
+  private readonly jokes: Mesh[] = [];
+  private jokeTime = 0;
+  private jokeActive = false;
+  private jokeCompleted = false;
 
   constructor(private readonly scene: Scene, private readonly shadows: ShadowGenerator) {
     this.scene.onBeforeRenderObservable.add(this.update);
@@ -79,6 +87,7 @@ export class OfficeNpcs {
     this.watchers = (await Promise.all(watcherPromises)).filter(
       (npc): npc is OfficeNpc => npc !== null,
     );
+    this.createJoke();
     await Promise.all(crowdPromises);
   }
 
@@ -89,10 +98,61 @@ export class OfficeNpcs {
 
   private readonly update = (): void => {
     if (!this.camera) return;
+    if (this.watchers.length === 2) {
+      const center = Vector3.Center(this.watchers[0].root.position, this.watchers[1].root.position);
+      const distance = Math.hypot(this.camera.position.x - center.x, this.camera.position.z - center.z);
+      this.jokeActive = !this.jokeCompleted && distance <= (this.jokeActive ? 5 : 4.5);
+      if (this.jokeActive) {
+        this.jokeTime += Math.min(this.scene.getEngine().getDeltaTime(), 100);
+        if (this.jokeTime >= this.jokes.length * 4000) {
+          this.jokeCompleted = true;
+          this.jokeActive = false;
+        }
+      }
+      const line = Math.floor(this.jokeTime / 4000);
+      this.jokes.forEach((bubble, index) => bubble.setEnabled(this.jokeActive && index === line));
+    }
     for (const watcher of this.watchers) {
       watcher.root.rotation.y = yawToward(watcher.root.position, this.camera.position);
     }
   };
+
+  private createJoke(): void {
+    if (this.watchers.length !== 2) return;
+    const lines = [
+      ["Ваш главный недостаток?"],
+      ["Честность."],
+      ["Не думаю, что это недостаток."],
+      ["А я и не спрашивал,", "что вы думаете."],
+    ];
+    lines.forEach((linesOfText, index) => {
+      const texture = new DynamicTexture(`watcher-joke-${index}`, { width: 1024, height: 256 }, this.scene, false);
+      const context = texture.getContext();
+      context.fillStyle = "#fffff5";
+      context.fillRect(0, 0, 1024, 256);
+      context.strokeStyle = "#242822";
+      context.lineWidth = 8;
+      context.strokeRect(4, 4, 1016, 248);
+      context.font = "bold 44px sans-serif";
+      context.textAlign = "center";
+      context.fillStyle = "#171b18";
+      linesOfText.forEach((line, row) => context.fillText(line, 512, linesOfText.length === 1 ? 145 : 110 + row * 60));
+      texture.update();
+      const material = new StandardMaterial(`watcher-joke-material-${index}`, this.scene);
+      material.diffuseTexture = texture;
+      material.emissiveColor = Color3.White();
+      material.disableLighting = true;
+      material.backFaceCulling = false;
+      const bubble = MeshBuilder.CreatePlane(`watcher-joke-bubble-${index}`, { width: 2.6, height: 0.65 }, this.scene);
+      bubble.material = material;
+      bubble.billboardMode = Mesh.BILLBOARDMODE_ALL;
+      bubble.isPickable = false;
+      bubble.position.copyFrom(this.watchers[index % 2].root.position);
+      bubble.position.y += 2.65;
+      bubble.setEnabled(false);
+      this.jokes.push(bubble);
+    });
+  }
 
   private async loadNpc(
     name: string,
