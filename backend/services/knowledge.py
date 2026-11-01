@@ -8,7 +8,7 @@ class KnowledgeService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def search(self, scenario_id: str, message: str) -> list[dict]:
+    async def search(self, scenario_id: str, message: str, topic: str | None = None) -> list[dict]:
         # plainto_tsquery объединяет значимые слова алиаса через AND.
         rows = (await self.session.execute(text("""
             WITH query AS (
@@ -24,10 +24,16 @@ class KnowledgeService:
                 to_tsvector('russian', replace(lower(k.context), 'ё', 'е')) @@ q.tsq AS full_match
                 FROM scenario_knowledge k CROSS JOIN query q
                 WHERE k.scenario_id = :scenario_id AND k.enabled = true
+                AND (CAST(:topic AS text) IS NULL OR EXISTS (
+                    SELECT 1 FROM interview_question_knowledge link
+                    JOIN interview_questions question ON question.id = link.question_id
+                    WHERE link.knowledge_id = k.id AND question.scenario_id = k.scenario_id
+                      AND question.enabled = true AND question.topic = CAST(:topic AS text)
+                ))
             ) SELECT id, version, context, priority FROM candidates
               WHERE alias_count > 0 OR full_match
               ORDER BY priority DESC, alias_count DESC, id ASC LIMIT 2
-        """), {"scenario_id": scenario_id, "message": message})).mappings().all()
+        """), {"scenario_id": scenario_id, "message": message, "topic": topic})).mappings().all()
         return [dict(row) for row in rows]
 
     async def linked(self, question_id: str, scenario_id: str) -> list[dict]:

@@ -86,6 +86,7 @@ class InterviewAttempt(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     player_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     scenario_id: Mapped[str] = mapped_column(ForeignKey("scenarios.id"))
+    topic: Mapped[str | None] = mapped_column(String(100))
     request_id: Mapped[str] = mapped_column(String(36))
     status: Mapped[str] = mapped_column(String(30), default="in_progress")
     report_text: Mapped[str | None] = mapped_column(Text)

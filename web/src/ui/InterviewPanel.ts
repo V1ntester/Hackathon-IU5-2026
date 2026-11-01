@@ -5,6 +5,7 @@ const SCENARIO_ID = "interview";
 export class InterviewPanel {
   private readonly root: HTMLElement;
   private readonly question: HTMLElement;
+  private readonly topic: HTMLElement;
   private readonly status: HTMLElement;
   private readonly input: HTMLTextAreaElement;
   private readonly report: HTMLElement;
@@ -26,6 +27,7 @@ export class InterviewPanel {
     this.root.setAttribute("aria-label", "Интервью");
     this.root.innerHTML = `<div class="interview__panel">
       <p class="start__eyebrow">Техническое интервью</p>
+      <p data-topic></p>
       <h2 class="interview__question"></h2>
       <textarea class="interview__answer" aria-label="Ваш ответ" maxlength="1000" rows="4"></textarea>
       <p class="interview__status" role="status"></p>
@@ -40,6 +42,7 @@ export class InterviewPanel {
       </div></div>`;
     mount.appendChild(this.root);
     this.question = this.root.querySelector("h2")!;
+    this.topic = this.root.querySelector("[data-topic]")!;
     this.status = this.root.querySelector(".interview__status")!;
     this.input = this.root.querySelector("textarea")!;
     this.report = this.root.querySelector("[data-report]")!;
@@ -146,6 +149,7 @@ export class InterviewPanel {
 
   private render(): void {
     const state = this.state;
+    this.topic.textContent = state ? `Тема: ${state.topic ?? "Все темы"}` : "";
     this.question.textContent = state?.current_question
       ? `Вопрос ${state.current_question.position} из 4: ${state.current_question.text}` : "Интервью";
     this.status.textContent = !this.connected ? "Ожидаем подключения к серверу…"

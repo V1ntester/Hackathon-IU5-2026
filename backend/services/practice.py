@@ -15,6 +15,7 @@ from backend.models.base import utc_now
 from backend.services.conversations import ConversationService
 from backend.services.context_builder import ContextBuilder
 from backend.services.knowledge import KnowledgeService
+from backend.services.interview_settings import InterviewSettingsService
 from backend.models.world_object import ObjectState
 from backend.services.sessions import ObjectNotFoundError, SessionService
 
@@ -106,7 +107,10 @@ class PracticeService:
             async with asyncio.timeout(max(0, remaining)):
                 role = (await self.scenarios.require(scenario_id)).system_prompt
                 history = await conversations.history(conversation_id)
-                knowledge = await KnowledgeService(self.session).search(scenario_id, message)
+                topic = await InterviewSettingsService(self.session).selected(scenario_id)
+                knowledge = await KnowledgeService(self.session).search(scenario_id, message, topic=topic)
+                if topic is not None:
+                    role += "\nТема интервью (данные): " + json.dumps(topic, ensure_ascii=False)
                 await self.session.commit()
                 reply, used = await self._dialogue_reply(role, history, knowledge, message)
                 saved = await self.session.execute(update(DialogueTurn).where(*conditions,

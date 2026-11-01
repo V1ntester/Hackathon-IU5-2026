@@ -109,7 +109,6 @@ body {
   top: 26px;
   display: flex;
   align-items: center;
-  gap: 12px;
   opacity: 0;
   transform: translateY(-6px);
   transition:
@@ -122,41 +121,17 @@ body {
   transform: none;
 }
 
-.hud__mark {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  border-radius: 7px;
-  font-family: "Cascadia Mono", "Consolas", monospace;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  color: var(--accent);
-  background: rgba(10, 12, 14, 0.35);
-  backdrop-filter: blur(8px);
-}
-
 .hud__brand-copy {
   display: flex;
   flex-direction: column;
-  gap: 1px;
   line-height: 1.2;
 }
 
 .hud__brand-copy strong {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-}
-
-.hud__brand-copy span {
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--muted);
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  color: var(--accent);
 }
 
 .hud__meta {
@@ -167,7 +142,6 @@ body {
   gap: 18px;
   font-size: 10px;
   letter-spacing: 0.18em;
-  text-transform: uppercase;
   color: var(--muted);
   opacity: 0;
   transition: opacity 0.35s ease 0.2s;
@@ -626,9 +600,15 @@ body {
 }
 
 @media (max-width: 620px) {
-  .hud__meta,
   .hud__hint {
     display: none;
+  }
+
+  .hud__meta {
+    right: 18px;
+    top: 22px;
+    font-size: 10px;
+    letter-spacing: 0.1em;
   }
 
   .start {
