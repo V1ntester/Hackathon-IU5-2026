@@ -22,6 +22,7 @@ const TOTAL_WIDTH = WORLD.size + WORLD.wallThickness * 2;
 export class Office {
   readonly spawn: Vector3;
   readonly materials: OfficeMaterials;
+  readonly interviewDoorPosition = new Vector3(0, 0, -13);
   npc: AbstractMesh | null = null;
 
   private readonly scene: Scene;
@@ -68,6 +69,12 @@ export class Office {
               this.lighting.shadows.addShadowCaster(mesh);
           }
       }
+  }
+
+  isNearInterviewDoor(position: Vector3): boolean {
+    const dx = this.interviewDoorPosition.x - position.x;
+    const dz = this.interviewDoorPosition.z - position.z;
+    return dx * dx + dz * dz <= 2.25 ** 2;
   }
 
   private buildFloor(): void {
@@ -431,11 +438,13 @@ export class Office {
     const modelsPath = "/models/";
 
     try {
-        // 1. Дверь по центру стены за спиной игрока (Z = -10)
+        // 1. Дверь в кабинет для интервью на задней стене офиса.
         const doorResult = await ImportMeshAsync("low_poly_door.glb", this.scene, { rootUrl: modelsPath });
         const door = doorResult.meshes[0];
         if (door) {
-            door.position = new Vector3(0, 1.5, -13);
+            door.position = this.interviewDoorPosition.clone();
+            door.position.y = 1.5;
+            door.metadata = { interactable: true, action: "Enter Interview" };
         }
 
         // 2. Координаты для рабочих мест (столы, компьютеры, стулья)

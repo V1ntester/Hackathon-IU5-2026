@@ -9,6 +9,7 @@ import {
 import { FirstPersonController } from "../player/FirstPersonController";
 import { Hud } from "../ui/Hud";
 import { Office } from "../world/Office";
+import { InterviewRoom } from "../world/InterviewRoom";
 import { GameClient } from "../network/GameClient";
 import { RemotePlayers } from "../world/RemotePlayers";
 import { OnlinePanel } from "../ui/OnlinePanel";
@@ -17,6 +18,7 @@ export class Game {
   readonly engine: Engine;
   readonly scene: Scene;
   readonly world: Office;
+  readonly interview: InterviewRoom;
   readonly player: FirstPersonController;
   readonly hud: Hud;
   readonly network: GameClient;
@@ -25,6 +27,9 @@ export class Game {
 
   private readonly canvas: HTMLCanvasElement;
   private readonly movementTimer: ReturnType<typeof setInterval>;
+  private readonly officeReturnPosition = Vector3.Zero();
+  private readonly officeReturnRotation = Vector3.Zero();
+  private mode: "office" | "interview" = "office";
   private npcNearby = false;
 
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
@@ -49,6 +54,7 @@ export class Game {
 
     this.world = new Office(this.scene);
     this.player = new FirstPersonController(this.scene, canvas, this.world.spawn);
+    this.interview = new InterviewRoom(this.engine);
     this.hud = new Hud(uiRoot, this.requestPointerLock);
     this.remotePlayers = new RemotePlayers(this.scene);
     this.network = new GameClient({
@@ -67,7 +73,7 @@ export class Game {
     this.movementTimer = setInterval(this.sendPosition, 80);
     void this.network.connect();
 
-    this.scene.onBeforeRenderObservable.add(this.checkNpcProximity);
+    this.scene.onBeforeRenderObservable.add(this.checkInteractions);
 
     this.setupRenderPipeline();
 
@@ -76,7 +82,13 @@ export class Game {
     window.addEventListener("resize", this.onResize);
     window.addEventListener("keydown", this.onInteractionKey);
 
-    this.engine.runRenderLoop(() => this.scene.render());
+    this.engine.runRenderLoop(() => {
+      if (this.mode === "interview") {
+        this.interview.scene.render();
+      } else {
+        this.scene.render();
+      }
+    });
   }
 
   dispose(): void {
@@ -90,22 +102,30 @@ export class Game {
     window.removeEventListener("keydown", this.onInteractionKey);
 
     clearInterval(this.movementTimer);
-    this.scene.onBeforeRenderObservable.removeCallback(this.checkNpcProximity);
+    this.scene.onBeforeRenderObservable.removeCallback(this.checkInteractions);
     this.network.dispose();
     this.remotePlayers.dispose();
     this.online.dispose();
     this.engine.stopRenderLoop();
     this.player.dispose();
     this.hud.dispose();
+    this.interview.dispose();
     this.scene.dispose();
     this.engine.dispose();
   }
 
   private setupRenderPipeline(): void {
-    const pipeline = new DefaultRenderingPipeline("officePipeline", true, this.scene, [
-      this.player.camera,
-    ]);
+    this.configureRenderPipeline(
+      new DefaultRenderingPipeline("officePipeline", true, this.scene, [this.player.camera]),
+    );
+    this.configureRenderPipeline(
+      new DefaultRenderingPipeline("interviewPipeline", true, this.interview.scene, [
+        this.interview.camera,
+      ]),
+    );
+  }
 
+  private configureRenderPipeline(pipeline: DefaultRenderingPipeline): void {
     pipeline.samples = 4;
     pipeline.fxaaEnabled = true;
 
@@ -127,7 +147,7 @@ export class Game {
   }
 
   private readonly requestPointerLock = (): void => {
-    if (this.online.isOpen) return;
+    if (this.mode !== "office" || this.online.isOpen) return;
     if (document.pointerLockElement === this.canvas) {
       return;
     }
@@ -145,6 +165,11 @@ export class Game {
   };
 
   private readonly onPointerLockChange = (): void => {
+    if (this.mode === "interview") {
+      this.player.setEnabled(false);
+      return;
+    }
+
     const locked = document.pointerLockElement === this.canvas;
     this.player.setEnabled(locked && !this.online.isOpen);
     this.hud.setPlaying(locked);
@@ -159,6 +184,7 @@ export class Game {
   };
 
   private readonly sendPosition = (): void => {
+    if (this.mode !== "office") return;
     const { x, y, z } = this.player.camera.position;
     this.network.sendMove({ x, y, z }, this.player.camera.rotation.y);
   };
@@ -182,13 +208,18 @@ export class Game {
     return (position.x - player.x) ** 2 + (position.z - player.z) ** 2 <= 3 ** 2;
   }
 
-  private readonly checkNpcProximity = (): void => {
-    if (!this.isNearNpc()) {
-      this.npcNearby = false;
+  private readonly checkInteractions = (): void => {
+    if (this.mode !== "office") return;
+    if (document.pointerLockElement !== this.canvas || this.online.isOpen) {
       this.hud.hidePrompt();
       return;
     }
-    if (document.pointerLockElement !== this.canvas || this.online.isOpen) {
+    if (this.world.isNearInterviewDoor(this.player.camera.position)) {
+      this.hud.showPrompt("E — войти в кабинет для интервью");
+      return;
+    }
+    if (!this.isNearNpc()) {
+      this.npcNearby = false;
       this.hud.hidePrompt();
       return;
     }
@@ -200,6 +231,31 @@ export class Game {
     this.hud.showPrompt("E — снова поговорить с NPC");
   };
 
+  private enterInterview(): void {
+    if (this.mode !== "office") return;
+
+    this.officeReturnPosition.copyFrom(this.player.camera.position);
+    this.officeReturnRotation.copyFrom(this.player.camera.rotation);
+    this.mode = "interview";
+    this.npcNearby = false;
+    this.player.setEnabled(false);
+    this.hud.setInterviewMode(true);
+    this.hud.showPrompt("E — вернуться в офис");
+    if (document.pointerLockElement === this.canvas) document.exitPointerLock();
+    this.canvas.focus({ preventScroll: true });
+  }
+
+  private returnToOffice(): void {
+    if (this.mode !== "interview") return;
+
+    this.mode = "office";
+    this.player.camera.position.copyFrom(this.officeReturnPosition);
+    this.player.camera.rotation.copyFrom(this.officeReturnRotation);
+    this.hud.setInterviewMode(false);
+    this.hud.hidePrompt();
+    this.requestPointerLock();
+  }
+
   private readonly onInteractionKey = (event: KeyboardEvent): void => {
     if (event.repeat) return;
     if (event.code === "Escape" && this.online.isOpen) {
@@ -207,7 +263,21 @@ export class Game {
       return;
     }
     if (event.target instanceof HTMLElement && event.target.closest("input, textarea, select, button")) return;
-    if (event.code === "KeyE" && document.pointerLockElement === this.canvas && this.isNearNpc()) {
+    if (event.code !== "KeyE") return;
+
+    if (this.mode === "interview") {
+      event.preventDefault();
+      this.returnToOffice();
+      return;
+    }
+    if (document.pointerLockElement !== this.canvas) return;
+
+    if (this.world.isNearInterviewDoor(this.player.camera.position)) {
+      event.preventDefault();
+      this.enterInterview();
+      return;
+    }
+    if (this.isNearNpc()) {
       event.preventDefault();
       this.npcNearby = true;
       this.setNpcOpen(true);
