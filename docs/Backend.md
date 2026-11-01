@@ -54,7 +54,7 @@ docker compose up -d db
 при первой инициализации пустого тома. После готовности БД:
 
 ```powershell
-.\.venv\Scripts\alembic.exe upgrade head
+.\.venv\Scripts\alembic.exe -c backend/alembic.ini upgrade head
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1 --ws-max-size 4096
 ```
 

@@ -16,7 +16,7 @@ from backend.config import get_settings
 from backend.database import engine, get_session, session_factory
 from backend.models import PlayerStats, Scenario, User
 from backend.realtime import Peer, World
-from backend.schemas import (
+from backend.dtos import (
     ChatRequest, ChatResponse, MoveMessage, PlayerCreate, PlayerRead,
     ScenarioRead, StatsRead, TranscriptionResponse,
 )

@@ -5,7 +5,7 @@ from time import monotonic
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
-from backend.schemas import MoveMessage
+from backend.dtos import MoveMessage
 
 
 @dataclass
