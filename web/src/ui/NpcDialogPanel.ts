@@ -1,323 +1,225 @@
-import type { GameClient } from "../network/GameClient";
+import type { GameClient, DialogueTurn } from "../network/GameClient";
 import { VoiceRecorder } from "../player/VoiceRecorder";
 
 const SCENARIO_ID = "interview";
 
 export class NpcDialogPanel {
   private readonly root: HTMLElement;
-  private readonly form: HTMLFormElement;
   private readonly input: HTMLTextAreaElement;
   private readonly status: HTMLElement;
   private readonly messages: HTMLElement;
-  private readonly voiceStatus: HTMLElement;
+  private readonly send: HTMLButtonElement;
   private readonly microphone: HTMLButtonElement;
-  private readonly composer: HTMLElement;
-  private readonly inputHint: HTMLElement;
+  private readonly fresh: HTMLButtonElement;
   private readonly voice: VoiceRecorder;
   private active = false;
   private connected = false;
+  private disposed = false;
   private busy = false;
   private recording = false;
-  private greeted = false;
-  private greetingStarted = false;
-  private disposed = false;
+  private waiting = false;
   private generation = 0;
-  private operation: AbortController | null = null;
-  private scenarioTitle = "Собеседование";
-  private greetingReply: HTMLElement | null = null;
-  private pendingDraft: string | null = null;
+  private conversationId: string | null = null;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  private pending: { request: string; message: string } | null = null;
 
   constructor(mount: HTMLElement, private readonly client: GameClient, onExit: () => void) {
     this.root = document.createElement("section");
     this.root.className = "interview npc-dialog";
     this.root.hidden = true;
     this.root.setAttribute("aria-label", "Разговор с NPC");
-    this.root.innerHTML = `
-      <form class="interview__panel">
-        <p class="start__eyebrow interview__eyebrow">Диалог</p>
-        <h2 class="interview__question">Разговор с NPC</h2>
-        <div class="interview__messages" role="log" aria-label="Сообщения собеседования" aria-live="polite"></div>
-        <div class="interview__composer">
-          <textarea class="interview__answer" aria-label="Сообщение для NPC"
-            placeholder="Введите сообщение…" maxlength="1000" rows="2"></textarea>
-          <button class="interview__microphone" type="button" aria-label="Начать запись голоса"
-            title="Записать голос" aria-pressed="false">
-            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="9" y="2" width="6" height="12" rx="3"/>
-              <path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/>
-            </svg>
-          </button>
-        </div>
-        <p class="interview__input-hint">Enter — отправить · Shift + Enter — новая строка</p>
-        <p class="interview__voice-status" role="status"></p>
-        <p class="interview__status" role="status"></p>
-        <div class="interview__actions">
-          <button class="interview__button interview__button--secondary" type="button">
-            Закрыть (Esc)
-          </button>
-        </div>
-      </form>`;
+    this.root.innerHTML = `<form class="interview__panel">
+      <p class="start__eyebrow">Диалог</p><h2 class="interview__question">Разговор с NPC</h2>
+      <div class="interview__messages" role="log" aria-live="polite"></div>
+      <textarea class="interview__answer" aria-label="Сообщение" maxlength="1000" rows="2"></textarea>
+      <p class="interview__status" role="status"></p>
+      <div class="interview__actions">
+        <button type="submit" class="interview__button" data-send>Отправить</button>
+        <button type="button" class="interview__button" data-voice>Микрофон</button>
+        <button type="button" class="interview__button" data-new>Новый разговор</button>
+        <button type="button" class="interview__button" data-refresh>Восстановить</button>
+        <button type="button" class="interview__button" data-close>Закрыть (Esc)</button>
+      </div></form>`;
     mount.appendChild(this.root);
-
-    this.form = this.root.querySelector<HTMLFormElement>("form")!;
-    this.input = this.root.querySelector<HTMLTextAreaElement>("textarea")!;
-    this.status = this.root.querySelector<HTMLElement>(".interview__status")!;
-    this.messages = this.root.querySelector<HTMLElement>(".interview__messages")!;
-    this.voiceStatus = this.root.querySelector<HTMLElement>(".interview__voice-status")!;
-    this.microphone = this.root.querySelector<HTMLButtonElement>(".interview__microphone")!;
-    this.composer = this.root.querySelector<HTMLElement>(".interview__composer")!;
-    this.inputHint = this.root.querySelector<HTMLElement>(".interview__input-hint")!;
+    this.input = this.root.querySelector("textarea")!;
+    this.status = this.root.querySelector(".interview__status")!;
+    this.messages = this.root.querySelector(".interview__messages")!;
+    this.send = this.root.querySelector("[data-send]")!;
+    this.microphone = this.root.querySelector("[data-voice]")!;
+    this.fresh = this.root.querySelector("[data-new]")!;
     this.voice = new VoiceRecorder((recording) => {
       this.recording = recording;
-      this.microphone.setAttribute("aria-pressed", String(recording));
-      const label = recording ? "Остановить запись" : "Начать запись голоса";
-      this.microphone.setAttribute("aria-label", label);
-      this.microphone.title = label;
-      this.updateControls();
+      this.microphone.textContent = recording ? "Остановить запись" : "Микрофон";
+      this.controls();
     });
-
-    this.form.addEventListener("submit", (event) => { event.preventDefault(); });
-    this.input.addEventListener("keydown", this.onInputKeyDown);
+    this.root.querySelector("form")!.addEventListener("submit", (event) => {
+      event.preventDefault(); void this.submit();
+    });
+    this.input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+        event.preventDefault(); event.stopPropagation();
+        if (!event.repeat) void this.submit();
+      }
+    });
     this.microphone.addEventListener("click", () => {
-      if (this.recording) this.voice.stop();
-      else void this.recordVoice();
+      if (this.recording) this.voice.stop(); else void this.record();
     });
-    this.root.querySelector<HTMLButtonElement>(".interview__button")!.addEventListener("click", onExit);
-    this.updateControls();
-    void this.prepareMicrophone();
+    this.fresh.addEventListener("click", () => void this.restore(true));
+    this.root.querySelector("[data-refresh]")!.addEventListener("click", () => void this.restore());
+    this.root.querySelector("[data-close]")!.addEventListener("click", onExit);
+    this.controls();
   }
 
-  get isOpen(): boolean {
-    return this.active;
-  }
+  get isOpen(): boolean { return this.active; }
 
   setConnected(connected: boolean): void {
-    if (this.connected === connected) return;
     this.connected = connected;
-    if (!connected) {
-      this.cancelOperation();
-      if (this.active) this.status.textContent = "Нет связи с сервером. Ожидаем подключения…";
-    } else if (this.active) {
-      if (!this.greeted) this.startGreeting();
-      else this.status.textContent = "Связь восстановлена.";
-    }
-    this.updateControls();
+    if (this.active && connected) void this.restore();
+    if (!connected) { this.invalidate(); this.status.textContent = "Нет связи с сервером"; }
+    this.controls();
   }
 
   setActive(active: boolean): void {
-    if (this.active === active) return;
+    if (active === this.active) return;
     this.active = active;
     this.root.hidden = !active;
-    this.cancelOperation();
-    if (active) {
-      this.messages.replaceChildren();
-      this.greetingReply = null;
-      this.input.value = "";
-      this.greeted = false;
-      this.greetingStarted = false;
-      if (this.connected) this.startGreeting();
-      else this.status.textContent = "Ожидаем подключения к серверу…";
-    }
-    this.updateControls();
+    this.invalidate();
+    if (active && this.connected) void this.restore();
+    this.controls();
   }
 
-  private startGreeting(): void {
-    if (!this.active || !this.connected || this.busy || this.greetingStarted) return;
-    this.greetingStarted = true;
-    this.greetingReply?.remove();
-    this.greetingReply = null;
-    void this.sendMessage("Привет", true);
-  }
-
-  private readonly onInputKeyDown = (event: KeyboardEvent): void => {
-    if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (event.repeat || !this.active || !this.connected || this.busy) return;
-    if (!this.greeted) {
-      this.startGreeting();
-      return;
-    }
-    const message = this.input.value.trim();
-    if (!message) return;
-    if (message.length > 1000) {
-      this.status.textContent = "Сократите сообщение до 1000 символов.";
-      return;
-    }
-    void this.sendMessage(message, false);
-  };
-
-  private async sendMessage(message: string, greeting: boolean): Promise<void> {
-    const generation = this.generation;
-    if (!greeting) {
-      this.pendingDraft = this.input.value;
-      this.input.value = "";
-    }
-    const operation = this.beginOperation();
-    this.status.textContent = "";
-    const pending = this.appendMessage("Вы", message, true);
-    const answer = this.appendMessage(this.scenarioTitle, "Готовит ответ…");
-    const answerText = answer.querySelector("p")!;
-    answer.setAttribute("aria-busy", "true");
-    if (greeting) this.greetingReply = answer;
-    try {
-      if (greeting) {
-        const scenarios = await this.client.scenarios(operation.signal);
-        if (!this.isCurrent(generation)) {
-          pending.remove();
-          answer.remove();
-          return;
-        }
-        const scenario = scenarios.find((item) => item.id === SCENARIO_ID);
-        if (!scenario) throw new Error("Сценарий собеседования не найден.");
-        this.scenarioTitle = scenario.title;
-        answer.querySelector("strong")!.textContent = this.scenarioTitle;
-      }
-      const response = await this.client.chat(SCENARIO_ID, message, operation.signal);
-      if (!this.isCurrent(generation)) {
-        pending.remove();
-        answer.remove();
-        return;
-      }
-      answerText.textContent = response.reply;
-      answer.setAttribute("aria-busy", "false");
-      this.messages.scrollTop = this.messages.scrollHeight;
-      this.pendingDraft = null;
-      this.voiceStatus.textContent = "";
-      this.greeted = true;
-      this.status.textContent = "";
-    } catch (error) {
-      pending.remove();
-      if (!this.isCurrent(generation)) {
-        answer.remove();
-        return;
-      }
-      answer.setAttribute("aria-busy", "false");
-      answerText.textContent = this.errorMessage(error);
-      if (greeting) this.greetingStarted = false;
-      if (greeting) {
-        const retry = document.createElement("button");
-        retry.type = "button";
-        retry.className = "interview__button interview__button--secondary";
-        retry.textContent = "Повторить приветствие";
-        retry.addEventListener("click", () => this.startGreeting());
-        answer.appendChild(retry);
-      } else {
-        this.input.value = this.pendingDraft ?? message;
-        this.pendingDraft = null;
-        this.status.textContent = "Нажмите Enter, чтобы повторить.";
-      }
-    } finally {
-      if (this.isCurrent(generation)) this.finishOperation();
-    }
-  }
-
-  private appendMessage(author: string, text: string, user = false): HTMLElement {
-    const message = document.createElement("div");
-    message.className = `interview__message${user ? " interview__message--user" : ""}`;
-    const label = document.createElement("strong");
-    label.textContent = author;
-    const content = document.createElement("p");
-    content.textContent = text;
-    message.append(label, content);
-    this.messages.appendChild(message);
-    this.messages.scrollTop = this.messages.scrollHeight;
-    return message;
-  }
-
-  private async prepareMicrophone(): Promise<void> {
-    try {
-      await this.voice.requestPermission();
-    } catch (error) {
-      if (!this.disposed) this.voiceStatus.textContent = this.errorMessage(error);
-    }
-  }
-
-  private async recordVoice(): Promise<void> {
-    if (!this.active || !this.connected || !this.greeted || this.busy) return;
-    const generation = this.generation;
-    const operation = this.beginOperation();
-    this.voiceStatus.textContent = "Подключение микрофона…";
-    try {
-      const audio = await this.voice.record();
-      if (!this.isCurrent(generation)) return;
-      this.voiceStatus.textContent = "Распознаём речь…";
-      const response = await this.client.transcribe(audio, operation.signal);
-      if (!this.isCurrent(generation)) return;
-      const text = response.text.trim();
-      if (!text) throw new Error("Речь не распознана. Попробуйте ещё раз.");
-      this.input.value = text;
-      this.voiceStatus.textContent = text.length > 1000
-        ? "Сократите распознанный текст до 1000 символов."
-        : "Проверьте текст и нажмите Enter.";
-    } catch (error) {
-      if (this.isCurrent(generation)) this.voiceStatus.textContent = this.errorMessage(error);
-    } finally {
-      if (this.isCurrent(generation)) this.finishOperation();
-    }
-  }
-
-  private beginOperation(): AbortController {
-    this.operation = new AbortController();
-    this.busy = true;
-    this.updateControls();
-    return this.operation;
-  }
-
-  private finishOperation(): void {
-    this.operation = null;
-    this.busy = false;
-    this.updateControls();
-    if (this.greeted) this.input.focus({ preventScroll: true });
-    else this.greetingReply?.querySelector("button")?.focus({ preventScroll: true });
-  }
-
-  private cancelOperation(): void {
-    if (this.pendingDraft !== null) {
-      this.input.value = this.pendingDraft;
-      this.pendingDraft = null;
-    }
-    if (this.busy) this.voiceStatus.textContent = "";
-    this.generation += 1;
-    this.operation?.abort();
-    this.operation = null;
+  private invalidate(): void {
+    this.generation++;
+    clearTimeout(this.timer);
     this.voice.cancel();
     this.busy = false;
-    this.greetingStarted = this.greeted;
-    if (this.recording) this.recording = false;
-    this.updateControls();
   }
 
-  private isCurrent(generation: number): boolean {
-    return !this.disposed && this.active && generation === this.generation;
+  private current(generation: number): boolean {
+    return !this.disposed && this.active && this.connected && generation === this.generation;
   }
 
-  private updateControls(): void {
-    this.composer.hidden = !this.greeted;
-    this.inputHint.hidden = !this.greeted;
-    this.input.disabled = !this.active || !this.connected || this.busy;
-    this.microphone.disabled = !this.active || !this.connected || !this.greeted ||
-      (this.busy && !this.recording);
-    if (this.recording) this.voiceStatus.textContent = "Идёт запись. Нажмите микрофон, чтобы закончить.";
-    this.form.setAttribute("aria-busy", String(this.busy));
+  private pendingKey(): string {
+    return this.client.practiceKey(`pending:${this.conversationId}`, SCENARIO_ID);
   }
 
-  private errorMessage(error: unknown): string {
-    if (error instanceof DOMException) {
-      if (error.name === "NotAllowedError" || error.name === "SecurityError") {
-        return "Разрешите микрофон в настройках сайта или используйте текстовый ввод.";
-      }
-      if (error.name === "NotFoundError") return "Микрофон не найден. Можно ввести сообщение текстом.";
-      if (error.name === "NotReadableError") return "Микрофон недоступен или занят другим приложением.";
+  private async restore(fresh = false): Promise<void> {
+    if (!this.active || !this.connected || this.busy) return;
+    this.invalidate();
+    const generation = this.generation;
+    if (fresh) {
+      this.conversationId = null; this.pending = null; this.waiting = false;
+      this.input.value = ""; this.messages.replaceChildren();
     }
-    return error instanceof Error ? error.message : "Не удалось получить ответ сервера.";
+    this.busy = true; this.controls();
+    try {
+      const id = await this.client.conversation(SCENARIO_ID, fresh);
+      if (!this.current(generation)) return;
+      if (id !== this.conversationId) this.input.value = "";
+      this.conversationId = id;
+      this.pending = JSON.parse(sessionStorage.getItem(this.pendingKey()) || "null") as typeof this.pending;
+      const rows: DialogueTurn[] = [];
+      let after = 0;
+      while (true) {
+        const page = await this.client.turns(SCENARIO_ID, id, after);
+        if (!this.current(generation)) return;
+        rows.push(...page);
+        if (page.length < 100) break;
+        after = page[page.length - 1]!.sequence;
+      }
+      this.messages.replaceChildren();
+      for (const turn of rows) {
+        this.append("Вы", turn.message);
+        this.append("NPC", turn.reply ?? (turn.status === "pending" ? "Готовит ответ…" : "Ответ не получен"));
+      }
+      const unresolved = rows.find((r) => r.status === "pending");
+      this.waiting = Boolean(unresolved);
+      const last = rows[rows.length - 1];
+      if (this.pending && rows.some((r) => r.request_id === this.pending!.request && r.status === "completed")) {
+        this.pending = null; sessionStorage.removeItem(this.pendingKey()); this.input.value = "";
+      }
+      if (unresolved) {
+        this.pending = { request: unresolved.request_id, message: unresolved.message };
+        sessionStorage.setItem(this.pendingKey(), JSON.stringify(this.pending));
+        this.status.textContent = "Ожидаем завершения реплики…";
+        this.timer = setTimeout(() => void this.restore(), 2000);
+      } else {
+        // После серверного рестарта можно повторить failed-реплику с тем же ключом.
+        if (!this.pending && last?.status === "failed") this.pending = { request: last.request_id, message: last.message };
+        if (this.pending) this.input.value = this.pending.message;
+        this.status.textContent = this.pending ? "Ответ не получен. Нажмите «Отправить» для повтора." : "Enter — отправить · Shift + Enter — новая строка";
+      }
+    } catch (error) {
+      if (this.current(generation)) this.status.textContent = this.error(error);
+    } finally {
+      if (this.current(generation)) { this.busy = false; this.controls(); }
+    }
   }
+
+  private async submit(): Promise<void> {
+    if (this.busy || this.waiting || !this.active || !this.connected || !this.conversationId) return;
+    const message = this.input.value.trim();
+    if (!message || [...message].length > 1000) return;
+    const id = this.conversationId, generation = this.generation;
+    const pending = this.pending?.message === message ? this.pending : { request: crypto.randomUUID(), message };
+    this.pending = pending;
+    sessionStorage.setItem(this.pendingKey(), JSON.stringify(pending));
+    this.busy = true; this.controls(); this.status.textContent = "Готовит ответ…";
+    let failure = "";
+    try {
+      await this.client.chat(SCENARIO_ID, message, id, pending.request);
+      if (!this.current(generation)) return;
+      this.input.value = "";
+    } catch (error) {
+      failure = this.error(error);
+    } finally {
+      if (this.current(generation)) {
+        this.busy = false;
+        const restoredGeneration = this.generation + 1;
+        await this.restore();
+        if (this.current(restoredGeneration) && this.conversationId === id && failure && this.pending && !this.waiting) {
+          this.status.textContent = `${failure}. Повторите отправку или создайте новый разговор.`;
+        }
+      }
+    }
+  }
+
+  private append(author: string, text: string): void {
+    const row = document.createElement("div"); row.className = "interview__message";
+    const label = document.createElement("strong"); label.textContent = author;
+    const content = document.createElement("p"); content.textContent = text;
+    row.append(label, content); this.messages.appendChild(row);
+    this.messages.scrollTop = this.messages.scrollHeight;
+  }
+
+  private async record(): Promise<void> {
+    if (this.busy || !this.active || !this.connected) return;
+    const generation = this.generation;
+    this.busy = true; this.controls();
+    try {
+      const audio = await this.voice.record();
+      if (!this.current(generation)) return;
+      this.status.textContent = "Распознаём речь…";
+      const response = await this.client.transcribe(audio);
+      if (this.current(generation)) this.input.value = response.text;
+    } catch (error) {
+      if (this.current(generation)) this.status.textContent = this.error(error);
+    } finally {
+      if (this.current(generation)) { this.busy = false; this.controls(); }
+    }
+  }
+
+  private controls(): void {
+    const disabled = !this.active || !this.connected || this.busy;
+    this.input.disabled = disabled;
+    this.send.disabled = disabled || this.waiting || !this.conversationId;
+    this.microphone.disabled = !this.connected || !this.active || (this.busy && !this.recording);
+    this.fresh.disabled = disabled;
+  }
+
+  private error(error: unknown): string { return error instanceof Error ? error.message : "Ошибка сервера"; }
 
   dispose(): void {
-    this.disposed = true;
-    this.active = false;
-    this.cancelOperation();
-    this.voice.dispose();
-    this.root.remove();
+    this.disposed = true; this.invalidate(); this.voice.dispose(); this.root.remove();
   }
 }

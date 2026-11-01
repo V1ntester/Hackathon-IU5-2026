@@ -581,12 +581,14 @@ body {
 
 .interview__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   margin-top: 20px;
 }
 
 .interview__button {
   flex: 1;
+  min-width: 120px;
   padding: 14px 16px;
   border: 1px solid transparent;
   border-radius: 11px;
