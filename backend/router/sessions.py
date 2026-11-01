@@ -68,7 +68,7 @@ async def websocket_endpoint(websocket: WebSocket, player_id: UUID):
     peer.session_id = token
     game_session: SessionService = websocket.app.state.game_session
     if not game_session.connect(peer):
-        await websocket.close(code=1008, reason="Игрок уже подключён")
+        await websocket.close(code=4009, reason="Игрок уже подключён")
         return
     sender = asyncio.create_task(peer.send_snapshots())
     heartbeat = asyncio.create_task(game_session.heartbeat(peer))

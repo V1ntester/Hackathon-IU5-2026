@@ -71,6 +71,7 @@ export class Game {
         }
       },
       connected: () => this.sendPosition(),
+      alreadyPlaying: () => this.hud.showAlreadyPlaying(),
     });
     this.scenes = new SceneManager(this.engine, this.scene, this.interview, this.player);
     this.interactions = new InteractionController(
@@ -128,7 +129,7 @@ export class Game {
   };
 
   private readonly requestPointerLock = (): void => {
-    if (this.scenes.isInterviewActive || this.interactions.isConversationOpen) return;
+    if (this.hud.isBlocked || this.scenes.isInterviewActive || this.interactions.isConversationOpen) return;
     if (document.pointerLockElement === this.canvas) return;
 
     try {

@@ -39,6 +39,7 @@ interface Callbacks {
   state: (players: PlayerState[], localId: string) => void;
   objects?: (objects: WorldObjectState[]) => void;
   connected: () => void;
+  alreadyPlaying?: () => void;
   event?: (event: ServerEvent) => void;
 }
 
@@ -50,6 +51,7 @@ export class GameClient {
   private playerId: string | null = null;
   private disposed = false;
   private connecting = false;
+  private blocked = false;
 
   constructor(private readonly callbacks: Callbacks) {}
 
@@ -75,7 +77,7 @@ export class GameClient {
   }
 
   async connect(): Promise<void> {
-    if (this.disposed || this.connecting || this.socket) return;
+    if (this.disposed || this.blocked || this.connecting || this.socket) return;
     this.connecting = true;
     this.callbacks.status("Подключение к серверу…", false);
     try {
@@ -122,11 +124,18 @@ export class GameClient {
           this.callbacks.status("Получено некорректное состояние комнаты", false);
         }
       };
-      socket.onclose = () => {
+      socket.onclose = (event: CloseEvent) => {
         if (this.socket !== socket) return;
         this.socket = null;
         if (this.disposed) return;
         this.callbacks.state([], this.playerId ?? "");
+        if (event.code === 4009) {
+          this.blocked = true;
+          clearTimeout(this.retry);
+          this.callbacks.status("Вы уже играете в другой вкладке", false);
+          this.callbacks.alreadyPlaying?.();
+          return;
+        }
         this.callbacks.status("Связь потеряна. Переподключение…", false);
         this.scheduleRetry();
       };

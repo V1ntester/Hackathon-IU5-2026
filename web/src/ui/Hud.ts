@@ -13,6 +13,9 @@ export class Hud {
   private readonly hint: HTMLElement;
 
   private started = false;
+  private blocked = false;
+
+  get isBlocked(): boolean { return this.blocked; }
   private interviewMode = false;
   private conversationOpen = false;
 
@@ -90,11 +93,14 @@ export class Hud {
     });
 
     // Клик в любом месте заставки — вход (клик по кнопке всплывает сюда же).
-    overlay.addEventListener("click", () => onEnter());
+    overlay.addEventListener("click", () => {
+      if (this.blocked) location.reload();
+      else onEnter();
+    });
   }
 
   setPlaying(playing: boolean): void {
-    if (this.interviewMode || this.conversationOpen) return;
+    if (this.blocked || this.interviewMode || this.conversationOpen) return;
     this.root.classList.toggle("is-playing", playing);
 
     if (playing) {
@@ -116,6 +122,18 @@ export class Hud {
       "Сессия приостановлена. Кликните, чтобы вернуться в офис — позиция сохранится.";
     this.buttonLabel.textContent = "Продолжить";
     this.overlay.querySelector<HTMLButtonElement>(".start__button")?.focus({ preventScroll: true });
+  }
+
+  showAlreadyPlaying(): void {
+    this.blocked = true;
+    this.root.classList.remove("is-playing", "is-interview", "is-conversing");
+    this.overlay.setAttribute("aria-hidden", "false");
+    this.eyebrow.textContent = "Профиль занят";
+    this.title.textContent = "Вы уже играете";
+    this.description.textContent = "Этот профиль уже подключён в другой вкладке или на другом устройстве. Закройте игру там и обновите эту страницу.";
+    this.buttonLabel.textContent = "Обновить страницу";
+    this.error.hidden = true;
+    if (document.pointerLockElement) document.exitPointerLock();
   }
 
   setInterviewMode(active: boolean): void {
