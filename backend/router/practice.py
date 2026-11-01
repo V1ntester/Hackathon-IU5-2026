@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
@@ -27,8 +27,9 @@ async def transcribe(
     session: Session,
     player_id: Annotated[UUID, Form()],
     file: Annotated[UploadFile, File()],
+    language: Annotated[Literal["auto", "ru"], Form()] = "auto",
 ):
     text = await PracticeService(session, request.app.state.ai, settings).transcribe(
-        str(player_id), file,
+        str(player_id), file, language,
     )
     return TranscriptionResponse(text=text)

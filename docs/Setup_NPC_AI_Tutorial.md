@@ -1,7 +1,7 @@
 **Развёртывание локального ИИ для NPC**
 
 Для работы игры используются две локальные нейросети:
-- **Qwen3-0.6B Q4** — генерация текстовых ответов NPC.
+- **Qwen3-4B-Instruct-2507 Q4_K_M** — генерация текстовых ответов NPC.
 - **Whisper Base** — распознавание голосовых ответов игроков.
 
 Обе модели работают через официальные Docker-образы `llama.cpp` и `whisper.cpp`. Веса в Git не загружаем, каждый скачивает их самостоятельно.
@@ -15,10 +15,12 @@ mkdir models\llm -Force
 mkdir models\whisper -Force
 ```
 
-**3. Скачиваем Qwen (~397 МБ):**
+**3. Скачиваем Qwen (~2,5 ГБ):**
+
+[Страница файла GGUF](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/blob/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf).
 
 ```powershell
-curl.exe -fL --retry 3 -o models\llm\Qwen3-0.6B-Q4_K_M.gguf "https://huggingface.co/unsloth/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q4_K_M.gguf"
+curl.exe -fL --retry 3 -o models\llm\Qwen3-4B-Instruct-2507-Q4_K_M.gguf "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 ```
 
 **4. Скачиваем Whisper Base (~148 МБ):**
@@ -32,13 +34,13 @@ curl.exe -fL --retry 3 -o models\whisper\ggml-base.bin "https://huggingface.co/g
 **5. Загружаем Docker-образы:**
 
 ```powershell
-docker compose pull
+docker compose pull llm stt
 ```
 
 **6. Запускаем оба сервиса:**
 
 ```powershell
-docker compose up -d --pull never
+docker compose up -d --pull never llm stt
 ```
 
 **7. Проверяем работу:**
@@ -56,9 +58,14 @@ curl.exe http://localhost:8081/health
 Для остановки:
 
 ```powershell
-docker compose down
+docker compose stop llm stt
 ```
 
 После первоначальной загрузки моделей и Docker-образов интернет для работы ИИ не требуется. Необходимо только, чтобы Docker Desktop был запущен.
 
-**Итог:** скачиваем около 545 МБ весов плюс Docker-образы. После этого у каждого будет одинаковое локальное окружение ИИ.
+**Итог:** около 2,65 ГБ весов плюс Docker-образы. Для LLM заданы контекст 4096,
+6 потоков CPU и один слот генерации; ускорение GPU не включено.
+
+Если ИИ-сервисы уже подготовлены, повторно скачивать Whisper и образы не нужно.
+Переход на новые веса Qwen, настройка `QWEN_MODEL` и пересоздание только `llm`
+описаны в [руководстве backend](Backend.md#замена-ранее-установленной-модели).

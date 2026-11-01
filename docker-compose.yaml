@@ -28,13 +28,17 @@ services:
       - ./models/llm:/models:ro
     command:
       - -m
-      - /models/Qwen3-0.6B-Q4_K_M.gguf
+      - /models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+      - --alias
+      - Qwen3-4B-Instruct-2507
       - --host
       - 0.0.0.0
       - --port
       - "8080"
       - -c
-      - "2048"
+      - "4096"
+      - --parallel
+      - "1"
       - -t
       - "6"
       - -ngl

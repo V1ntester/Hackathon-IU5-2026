@@ -25,7 +25,7 @@ class PracticeService:
         await self.players.record_text_request(player_id)
         return reply
 
-    async def transcribe(self, player_id: str, file: UploadFile) -> str:
+    async def transcribe(self, player_id: str, file: UploadFile, language: str = "auto") -> str:
         try:
             await self.players.require(player_id)
             await self.session.rollback()
@@ -42,7 +42,7 @@ class PracticeService:
                 len(audio) < 12 or audio[:4] != b"RIFF" or audio[8:12] != b"WAVE"
             ):
                 raise HTTPException(415, "Некорректный заголовок WAV")
-            text = await self.ai.transcribe(audio, content_type)
+            text = await self.ai.transcribe(audio, content_type, language)
             await self.players.record_voice_request(player_id)
             return text
         finally:

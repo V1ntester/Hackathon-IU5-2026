@@ -22,7 +22,7 @@ class AIInferenceService:
     def __init__(self, client: httpx.AsyncClient, settings: Settings):
         self.client = client
         self.settings = settings
-        self.qwen_slots = asyncio.Semaphore(2)
+        self.qwen_slots = asyncio.Semaphore(1)
         self.whisper_slots = asyncio.Semaphore(2)
 
     async def _request(self, url: str, **kwargs) -> dict:
@@ -46,7 +46,7 @@ class AIInferenceService:
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": message},
                 ],
-                "max_tokens": 256,
+                "max_tokens": 192,
                 "temperature": 0.7,
                 "stream": False,
                 "chat_template_kwargs": {"enable_thinking": False},
@@ -59,11 +59,11 @@ class AIInferenceService:
         except (KeyError, IndexError, TypeError, ValueError) as exc:
             raise HTTPException(502, "Qwen вернул ответ без текста") from exc
 
-    async def transcribe(self, audio: bytes, content_type: str) -> str:
+    async def transcribe(self, audio: bytes, content_type: str, language: str = "auto") -> str:
         async with self.whisper_slots:
             result = await self._request(self.settings.whisper_url,
                 files={"file": (f"recording.{AUDIO_FORMATS[content_type]}", audio, content_type)},
-                data={"response_format": "json", "language": "auto"},
+                data={"response_format": "json", "language": language},
             )
         value = result.get("text")
         if not isinstance(value, str):

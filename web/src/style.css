@@ -367,6 +367,16 @@ body {
   display: none;
 }
 
+.hud.is-conversing .hud__overlay {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.hud.is-conversing .hud__crosshair {
+  opacity: 0;
+}
+
 .hud.is-interview::before {
   opacity: 1;
 }
@@ -453,12 +463,93 @@ body {
   text-align: center;
 }
 
+.interview__messages {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: min(32dvh, 280px);
+  overflow-y: auto;
+  margin-bottom: 18px;
+  scrollbar-width: thin;
+}
+
+.interview__messages:empty { display: none; }
+
+.interview__message {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.035);
+  overflow-wrap: anywhere;
+}
+
+.interview__message strong {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.interview__message p {
+  margin: 6px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.interview__message--user { background: rgba(200, 241, 105, 0.045); }
+.interview__message--user strong { color: var(--muted); }
+
+.interview__composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: end;
+  gap: 10px;
+}
+
+.interview__composer[hidden],
+.interview__input-hint[hidden] { display: none; }
+
+.interview__microphone {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  color: var(--accent);
+  background: rgba(200, 241, 105, 0.08);
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.interview__microphone:hover:not(:disabled) { background: rgba(200, 241, 105, 0.16); }
+.interview__microphone:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.interview__microphone:disabled { opacity: 0.42; cursor: default; }
+.interview__microphone[aria-pressed="true"] {
+  color: #ffb4a6;
+  border-color: #ffb4a6;
+  background: rgba(255, 156, 141, 0.14);
+}
+
+.interview__input-hint,
+.interview__voice-status {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.interview__voice-status:empty { display: none; }
+
 .interview__answer {
   display: block;
   width: 100%;
-  min-height: 132px;
+  height: calc(3.2em + 32px);
+  min-height: 0;
   padding: 15px 16px;
-  resize: vertical;
+  resize: none;
+  overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: 11px;
   outline: none;
@@ -570,6 +661,7 @@ body {
   .hud__overlay,
   .start__button,
   .interview__answer,
+  .interview__microphone,
   .interview__button {
     transition: none;
   }

@@ -47,12 +47,16 @@ export class Game {
 
     this.world = new Office(this.scene);
     this.player = new FirstPersonController(this.scene, canvas, this.world.spawn);
+    void this.world.npcs.init(this.player.camera);
     this.interview = new InterviewRoom(this.engine);
     this.hud = new Hud(uiRoot, this.requestPointerLock);
     this.remotePlayers = new RemotePlayers(this.scene);
     this.online = new OnlinePanel(uiRoot);
     this.network = new GameClient({
-      status: (message) => this.online.setStatus(message),
+      status: (message, connected) => {
+        this.online.setStatus(message);
+        this.interactions.setConnected(connected);
+      },
       state: (players, localId) => {
         this.remotePlayers.sync(players, localId);
         this.online.setPlayerCount(players.length);
@@ -78,6 +82,7 @@ export class Game {
       uiRoot,
       this.requestPointerLock,
       () => this.network.sendInteract("office-light"),
+      this.network,
     );
 
     // Интервал выше 50 мс: сервер ограничивает частоту принятых перемещений.
@@ -115,7 +120,7 @@ export class Game {
   }
 
   private readonly requestPointerLock = (): void => {
-    if (this.scenes.isInterviewActive) return;
+    if (this.scenes.isInterviewActive || this.interactions.isConversationOpen) return;
     if (document.pointerLockElement === this.canvas) return;
 
     try {
@@ -131,7 +136,7 @@ export class Game {
   };
 
   private readonly onPointerLockChange = (): void => {
-    if (this.scenes.isInterviewActive) {
+    if (this.scenes.isInterviewActive || this.interactions.isConversationOpen) {
       this.player.setEnabled(false);
       return;
     }
