@@ -5,7 +5,7 @@ from time import monotonic
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
-from backend.dtos import MoveMessage
+from backend.dtos.commands import Command, MoveCommand
 
 
 @dataclass
@@ -50,7 +50,13 @@ class SessionService:
             del self.participants[participant.player_id]
             self.broadcast()
 
-    def move(self, participant: SessionParticipant, message: MoveMessage):
+    def handle_command(self, participant: SessionParticipant, command: Command) -> None:
+        if isinstance(command, MoveCommand):
+            self.move(participant, command)
+            return
+        raise ValueError(f"Unsupported command type: {command.type}")
+
+    def move(self, participant: SessionParticipant, message: MoveCommand):
         now = monotonic()
         if now - participant.last_move < 0.05:
             return

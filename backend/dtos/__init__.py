@@ -5,7 +5,7 @@ from backend.dtos.stats import StatsRead
 from backend.dtos.scenario import ScenarioRead
 from backend.dtos.chat import ChatRequest, ChatResponse
 from backend.dtos.speech import TranscriptionResponse
-from backend.dtos.realtime import Position, MoveMessage
+from backend.dtos.realtime import Position
 
 __all__ = [
     "PlayerCreate",
@@ -16,5 +16,4 @@ __all__ = [
     "ChatResponse",
     "TranscriptionResponse",
     "Position",
-    "MoveMessage",
 ]

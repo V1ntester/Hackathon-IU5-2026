@@ -1,4 +1,4 @@
-from typing import Annotated, Literal
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -10,11 +10,3 @@ class Position(BaseModel):
     x: Coordinate = 0
     y: Coordinate = 0
     z: Coordinate = 0
-
-
-class MoveMessage(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    type: Literal["move"]
-    position: Position
-    # Поворот вокруг вертикальной оси Y сцены, в радианах.
-    rotation_y: float = Field(default=0, ge=-6.283186, le=6.283186, allow_inf_nan=False)
