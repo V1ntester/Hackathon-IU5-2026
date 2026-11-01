@@ -1,3 +1,4 @@
+import { authFetch, ensureAuth, sessionId } from "../auth";
 import { isWorldObjectState, type WorldObjectState } from "./WorldObjectState";
 import { isServerEvent, type ServerEvent } from "./ServerEvent";
 
@@ -61,7 +62,7 @@ export class GameClient {
       if (signal?.aborted) controller.abort();
     }
     try {
-      const response = await fetch(new URL(path, this.base), { ...init, signal: controller.signal });
+      const response = await authFetch(new URL(path, this.base), { ...init, signal: controller.signal });
       if (!response.ok) {
         const body: unknown = await response.json().catch(() => null);
         const detail = body && typeof body === "object" && "detail" in body ? body.detail : null;
@@ -78,19 +79,11 @@ export class GameClient {
     this.connecting = true;
     this.callbacks.status("Подключение к серверу…", false);
     try {
-      // sessionStorage сохраняет гостя при обновлении страницы в этой вкладке.
-      this.playerId ??= sessionStorage.getItem(`guest:${this.base.origin}`);
-      if (!this.playerId) {
-        const player = await this.request<{ id: string }>("/api/players", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ display_name: "Гость" }),
-        });
-        this.playerId = player.id;
-        sessionStorage.setItem(`guest:${this.base.origin}`, player.id);
-      }
+      const account = await ensureAuth();
+      this.playerId = account.id;
       if (this.disposed) return;
       const url = new URL(`/ws/${this.playerId}`, this.base);
+      url.searchParams.set("session_id", sessionId());
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
       const socket = new WebSocket(url);
       this.socket = socket;
@@ -105,7 +98,7 @@ export class GameClient {
           if (isServerEvent(message)) {
             if (message.name === "ping" && typeof message.payload.nonce === "string") {
               if (this.socket?.readyState === WebSocket.OPEN) {
-                this.socket.send(JSON.stringify({ type: "pong", nonce: message.payload.nonce }));
+                this.socket.send(JSON.stringify({ session_id: sessionId(), type: "pong", nonce: message.payload.nonce }));
               }
               return;
             }
@@ -159,20 +152,20 @@ export class GameClient {
     if (this.socket?.readyState !== WebSocket.OPEN || this.socket.bufferedAmount > 0) return;
     // Babylon допускает накопленный yaw, сервер принимает ограниченный диапазон.
     const yaw = Math.atan2(Math.sin(rotationY), Math.cos(rotationY));
-    this.socket.send(JSON.stringify({ type: "move", position, rotation_y: yaw }));
+    this.socket.send(JSON.stringify({ session_id: sessionId(), type: "move", position, rotation_y: yaw }));
   }
 
   sendFps(fps: number): void {
     if (!Number.isFinite(fps) || fps < 0 || fps > 240) return;
     if (this.socket?.readyState !== WebSocket.OPEN) return;
-    this.socket.send(JSON.stringify({ type: "fps", value: fps }));
+    this.socket.send(JSON.stringify({ session_id: sessionId(), type: "fps", value: fps }));
   }
 
   sendInteract(objectId: string): boolean {
     const id = objectId.trim();
     if (!id || [...id].length > 100) throw new Error("Некорректный идентификатор объекта");
     if (this.socket?.readyState !== WebSocket.OPEN || this.socket.bufferedAmount > 0) return false;
-    this.socket.send(JSON.stringify({ type: "interact", object_id: id }));
+    this.socket.send(JSON.stringify({ session_id: sessionId(), type: "interact", object_id: id }));
     return true;
   }
 

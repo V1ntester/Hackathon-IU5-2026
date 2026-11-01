@@ -1,3 +1,5 @@
+import { logout } from "../auth";
+
 export class Hud {
   private readonly root: HTMLElement;
   private readonly overlay: HTMLElement;
@@ -48,6 +50,7 @@ export class Hud {
             <li><kbd>Мышь</kbd><span>обзор</span></li>
             <li><kbd>Esc</kbd><span>пауза</span></li>
           </ul>
+          <button class="start__logout" type="button">Выйти из аккаунта</button>
           <p class="start__error" role="alert" hidden></p>
         </div>
       </section>
@@ -80,6 +83,11 @@ export class Hud {
     this.promptElement = promptElement;
     this.roomName = roomName;
     this.hint = hint;
+
+    root.querySelector<HTMLButtonElement>(".start__logout")!.addEventListener("click", (event) => {
+      event.stopPropagation();
+      void logout().catch((reason: unknown) => this.showError(reason instanceof Error ? reason.message : "Не удалось выйти"));
+    });
 
     // Клик в любом месте заставки — вход (клик по кнопке всплывает сюда же).
     overlay.addEventListener("click", () => onEnter());

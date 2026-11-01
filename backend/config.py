@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    redis_url: str = "redis://localhost:6379/0"
     database_url: str = "postgresql+asyncpg://game:game@localhost:5435/interview_game"
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     allow_lan_websocket_origins: bool = False

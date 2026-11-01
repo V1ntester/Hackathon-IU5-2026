@@ -22,6 +22,7 @@ class SessionParticipant:
     websocket: WebSocket
     player_id: str
     display_name: str
+    session_id: str | None = None
     position: dict = field(default_factory=lambda: {"x": 0.0, "y": 0.0, "z": 0.0})
     rotation_y: float = 0.0
     connected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

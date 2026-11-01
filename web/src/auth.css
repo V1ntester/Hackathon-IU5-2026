@@ -1,0 +1,12 @@
+.auth-screen { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: #0b0d10; color: #f2f4f2; font-family: system-ui, sans-serif; }
+.auth-form { width: min(380px, calc(100vw - 40px)); display: grid; gap: 16px; }
+.auth-form h1 { color: #c8f169; margin: 0; }
+.auth-form p { margin: 0; }
+.auth-form label { display: grid; gap: 8px; }
+.auth-form input, .auth-form button { font: inherit; padding: 12px; border-radius: 8px; border: 1px solid #454a40; }
+.auth-form input { background: #171b18; color: white; }
+.auth-form button { cursor: pointer; background: #c8f169; color: #0b0d10; }
+.auth-form button[data-switch] { background: transparent; color: #c8f169; }
+.auth-form [data-error] { color: #ffa6a6; font-size: 13px; }
+.auth-form button:disabled { opacity: .5; cursor: wait; }
+.start__logout { margin-top: 16px; border: 0; background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 12px; pointer-events: auto; }

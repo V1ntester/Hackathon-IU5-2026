@@ -1,4 +1,6 @@
 import asyncio
+import json
+from fastapi import HTTPException
 import ipaddress
 from contextlib import suppress
 from urllib.parse import urlsplit
@@ -46,6 +48,14 @@ async def websocket_endpoint(websocket: WebSocket, player_id: UUID):
     if origin is not None and not _origin_allowed(origin):
         await websocket.close(code=1008)
         return
+    token = websocket.query_params.get("session_id")
+    try:
+        owner = await websocket.app.state.auth.resolve(token)
+        if owner != str(player_id):
+            raise HTTPException(403)
+    except HTTPException:
+        await websocket.close(code=1008)
+        return
     async with session_factory() as session:
         player = await PlayerService(session).find(str(player_id))
         if player is None:
@@ -55,6 +65,7 @@ async def websocket_endpoint(websocket: WebSocket, player_id: UUID):
 
     await websocket.accept()
     peer = SessionParticipant(websocket, str(player_id), display_name)
+    peer.session_id = token
     game_session: SessionService = websocket.app.state.game_session
     if not game_session.connect(peer):
         await websocket.close(code=1008, reason="Игрок уже подключён")
@@ -74,6 +85,16 @@ async def websocket_endpoint(websocket: WebSocket, player_id: UUID):
                 break
             if len(raw) > 4096:
                 await websocket.close(code=1009)
+                break
+            try:
+                payload = json.loads(raw)
+                if not isinstance(payload, dict) or payload.pop("session_id", None) != token:
+                    raise HTTPException(401)
+                if await websocket.app.state.auth.resolve(token) != str(player_id):
+                    raise HTTPException(401)
+                raw = json.dumps(payload)
+            except (ValueError, HTTPException):
+                await websocket.close(code=1008, reason="Сессия недействительна")
                 break
             try:
                 command = parse_command(raw)
