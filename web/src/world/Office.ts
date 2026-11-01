@@ -17,12 +17,12 @@ const TOTAL_WIDTH = WORLD.size + WORLD.wallThickness * 2;
 
 /**
  * Каркас офиса: пол, потолок, глухие стены, витражные стены,
- * колонны и потолочные светильники. Мебель и NPC загружаются асинхронно из GLB.
+ * колонны и потолочные светильники. Мебель загружается асинхронно из GLB.
  */
 export class Office {
   readonly spawn: Vector3;
   readonly materials: OfficeMaterials;
-  npc: AbstractMesh | null = null;
+  readonly interviewDoorPosition = new Vector3(0, 0, -13);
 
   private readonly scene: Scene;
   private readonly lighting: OfficeLighting;
@@ -431,11 +431,13 @@ export class Office {
     const modelsPath = "/models/";
 
     try {
-        // 1. Дверь по центру стены за спиной игрока (Z = -10)
+        // 1. Дверь в кабинет для интервью на задней стене офиса.
         const doorResult = await ImportMeshAsync("low_poly_door.glb", this.scene, { rootUrl: modelsPath });
         const door = doorResult.meshes[0];
         if (door) {
-            door.position = new Vector3(0, 1.5, -13);
+            door.position = this.interviewDoorPosition.clone();
+            door.position.y = 1.5;
+            door.metadata = { interactable: true, action: "Enter Interview" };
         }
 
         // 2. Координаты для рабочих мест (столы, компьютеры, стулья)
@@ -475,19 +477,6 @@ export class Office {
         const sign = signResult.meshes[0];
         if (sign) {
             sign.position = new Vector3(1.5, 0, -8.5);
-        }
-
-        const stickmanResult = await ImportMeshAsync("employee_stickman.glb", this.scene, { rootUrl: modelsPath });
-        const stickman = stickmanResult.meshes[0];
-        if (stickman) {
-          stickman.position = new Vector3(0, 0, 8.0);
-          stickman.rotate(new Vector3(0, 1, 0), Math.PI * 3 / 2);
-          stickman.scaling = new Vector3(1.25, 1.25, 1.25);
-          this.npc = stickman;
-
-          stickmanResult.meshes.forEach((mesh) => {
-              mesh.metadata = { interactable: true, action: "Start Conversation" };
-          });
         }
 
         console.log("Все объекты успешно загружены и расставлены!");
