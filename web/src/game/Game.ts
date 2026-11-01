@@ -49,15 +49,24 @@ export class Game {
     this.interview = new InterviewRoom(this.engine);
     this.hud = new Hud(uiRoot, this.requestPointerLock);
     this.remotePlayers = new RemotePlayers(this.scene);
+    this.online = new OnlinePanel(uiRoot);
     this.network = new GameClient({
       status: (message) => this.online.setStatus(message),
       state: (players, localId) => {
         this.remotePlayers.sync(players, localId);
         this.online.setPlayerCount(players.length);
       },
+      objects: (objects) => {
+        const light = objects.find((object) => object.id === "office-light");
+        if (light) this.world.setLightEnabled(light.state === "active");
+      },
+      event: (event) => {
+        if (event.name === "command_rejected" && event.payload.object_id === "office-light") {
+          this.hud.showError("Сервер отклонил переключение света.");
+        }
+      },
       connected: () => this.sendPosition(),
     });
-    this.online = new OnlinePanel(uiRoot);
     this.scenes = new SceneManager(this.engine, this.scene, this.interview, this.player);
     this.interactions = new InteractionController(
       this.scenes,
@@ -67,6 +76,7 @@ export class Game {
       canvas,
       uiRoot,
       this.requestPointerLock,
+      () => this.network.sendInteract("office-light"),
     );
 
     // Интервал выше 50 мс: сервер ограничивает частоту принятых перемещений.

@@ -17,6 +17,7 @@ export class InteractionController {
     private readonly canvas: HTMLCanvasElement,
     uiRoot: HTMLElement,
     private readonly requestPointerLock: () => void,
+    private readonly requestLightInteraction: () => boolean,
   ) {
     this.interviewPanel = new InterviewPanel(uiRoot, this.returnToOffice);
     this.scenes.office.onBeforeRenderObservable.add(this.update);
@@ -108,8 +109,9 @@ export class InteractionController {
     if (interaction === "door") {
       this.enterInterview();
     } else {
-      this.world.toggleLight();
-      this.showOfficePrompt(interaction);
+      if (!this.requestLightInteraction()) {
+        this.hud.showError("Не удалось переключить свет. Проверьте подключение и попробуйте ещё раз.");
+      }
     }
   };
 }

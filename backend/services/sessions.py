@@ -7,7 +7,7 @@ from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
 from backend.dtos import ServerEvent, WorldObjectRead
-from backend.models.world_object import WorldObject
+from backend.models.world_object import ObjectState, WorldObject
 from backend.dtos.commands import Command, InteractCommand, MoveCommand
 
 
@@ -61,7 +61,7 @@ class SessionService:
     """Одна общая игровая сессия на процесс; методы без await атомарны в event loop."""
 
     def __init__(self, objects: Iterable[WorldObject] | None = None):
-        initial_objects = list(objects) if objects is not None else [WorldObject(id="office-light")]
+        initial_objects = list(objects) if objects is not None else [WorldObject(id="office-light", state=ObjectState.ACTIVE)]
         self.objects: dict[str, WorldObject] = {}
         for obj in initial_objects:
             if not obj.id.strip() or len(obj.id) > 100 or obj.id != obj.id.strip():

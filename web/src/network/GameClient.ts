@@ -1,3 +1,4 @@
+import { isWorldObjectState, type WorldObjectState } from "./WorldObjectState";
 import { isServerEvent, type ServerEvent } from "./ServerEvent";
 
 export interface PlayerState {
@@ -17,6 +18,7 @@ export interface Scenario {
 interface Callbacks {
   status: (message: string, connected: boolean) => void;
   state: (players: PlayerState[], localId: string) => void;
+  objects?: (objects: WorldObjectState[]) => void;
   connected: () => void;
   event?: (event: ServerEvent) => void;
 }
@@ -77,13 +79,18 @@ export class GameClient {
             return;
           }
           if (!message || typeof message !== "object") return;
-          const state = message as { type: string; players: PlayerState[] };
+          const state = message as { type: string; players: PlayerState[]; objects?: unknown };
           if (state.type !== "state" || !Array.isArray(state.players)) return;
           const valid = state.players.every((player) =>
             typeof player.id === "string" && typeof player.display_name === "string" &&
             player.position && [player.position.x, player.position.y, player.position.z,
               player.rotation_y].every((value) => typeof value === "number" && Number.isFinite(value)));
-          if (valid && this.playerId) this.callbacks.state(state.players, this.playerId);
+          if (valid && this.playerId) {
+            this.callbacks.state(state.players, this.playerId);
+            if (Array.isArray(state.objects) && state.objects.every(isWorldObjectState)) {
+              this.callbacks.objects?.(state.objects);
+            }
+          }
         } catch {
           this.callbacks.status("Получено некорректное состояние комнаты", false);
         }

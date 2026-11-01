@@ -51,6 +51,7 @@ export class Office {
     );
 
     this.buildCeilingLights();
+    this.setLightEnabled(true);
 
     for (const mesh of scene.meshes) {
       if (mesh.metadata?.castShadow === true) {
@@ -73,8 +74,8 @@ export class Office {
       }
   }
 
-  toggleLight(): void {
-    this.isLightOn = !this.isLightOn;
+  setLightEnabled(enabled: boolean): void {
+    this.isLightOn = enabled;
     this.lighting.setEnabled(this.isLightOn);
     this.materials.lightPanel.emissiveColor = this.isLightOn
       ? new Color3(2.6, 2.45, 2.15)
