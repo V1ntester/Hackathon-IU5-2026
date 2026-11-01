@@ -382,7 +382,7 @@ HTTP- и WebSocket-маршруты находятся в `backend/router/`: `pl
 По существующему WebSocket `/ws/{player_id}` клиент может отправить:
 
 ```json
-{"type": "interact", "object_id": "office-door"}
+{"type": "interact", "object_id": "office-light"}
 ```
 
 `object_id` — непустая строка длиной до 100 символов после удаления пробелов
@@ -396,9 +396,8 @@ HTTP- и WebSocket-маршруты находятся в `backend/router/`: `pl
 также увеличивает ревизию и инициирует рассылку. Как и для движений, очередь хранит
 последний снимок, а не гарантированную историю действий.
 
-Пока backend только регистрирует запрос взаимодействия: каталога объектов,
-проверки дистанции и конкретных эффектов (открытия двери, запуска диалога) нет.
-Это состояние находится в памяти сессии и не записывается в БД.
+Backend хранит объекты в памяти сессии и переключает их состояние при взаимодействии.
+Проверки дистанции и привязки к анимации сцены пока нет; данные не записываются в БД.
 
 ## События backend → frontend
 
@@ -408,7 +407,7 @@ Backend может отправлять по существующему WebSocke
 в `web/src/network/ServerEvent.ts`.
 
 ```json
-{"type": "event", "name": "example", "payload": {"object_id": "office-door"}}
+{"type": "event", "name": "example", "payload": {"object_id": "office-light"}}
 ```
 
 `type` всегда равен `event`, `name` — имя события (1–100 символов),
@@ -419,7 +418,7 @@ Backend может отправлять по существующему WebSocke
 
 ```python
 await session_service.send_event(
-    player_id, ServerEvent(name="example", payload={"object_id": "office-door"})
+    player_id, ServerEvent(name="example", payload={"object_id": "office-light"})
 )
 ```
 
@@ -440,7 +439,7 @@ callback событие игнорируется. Отображение и иг
 `GameClient.sendInteract(objectId)` отправляет:
 
 ```json
-{"type": "interact", "object_id": "office-door"}
+{"type": "interact", "object_id": "office-light"}
 ```
 
 Метод возвращает `true`, когда сообщение передано WebSocket, и `false`, если
@@ -449,3 +448,46 @@ callback событие игнорируется. Отображение и иг
 Автоматической отправки из сцены пока нет. Backend записывает
 `last_interaction_object_id` в состояние участника. Команда `interact` пока
 не создаёт отдельного события: конкретные события будут добавлены позже.
+
+## Серверные объекты мира
+
+Сущность `WorldObject` (`backend/models/world_object.py`) содержит `id` и `state`.
+Это модель в памяти, не таблица SQLAlchemy; миграция не требуется. Состояния:
+`inactive` и `active`. `SessionService` владеет каталогом `objects`; по умолчанию
+создаётся `office-light` — свет в лобби — в состоянии `inactive` (выключен).
+Состояние `active` означает, что свет включён. Собственный набор можно передать
+в конструктор: `SessionService(objects=[WorldObject(id="switch")])`.
+Повторяющиеся и некорректные идентификаторы не допускаются.
+
+Команда `{"type":"interact","object_id":"office-light"}` переключает состояние
+объекта, обновляет `last_interaction_object_id` игрока, увеличивает `revision` и
+вызывает broadcast полного снимка всем участникам. Новые участники также получают
+текущие объекты. В `state` добавлено поле `objects` с DTO `WorldObjectRead`:
+
+```json
+{
+  "type": "state",
+  "revision": 2,
+  "players": [],
+  "objects": [{"id": "office-light", "state": "active"}]
+}
+```
+
+`players` в примере сокращён; формат участников не изменён. При дальнейшем
+движении или выходе игрока состояние объектов сохраняется. После перезапуска
+backend восстанавливается начальный каталог.
+
+Неизвестный объект не создаётся автоматически и не меняет ревизию. Инициатор
+получает событие, соединение остаётся открытым:
+
+```json
+{
+  "type": "event",
+  "name": "command_rejected",
+  "payload": {"command": "interact", "code": "object_not_found", "object_id": "missing"}
+}
+```
+
+Обновления используют существующий broadcast `state`: медленный клиент получает
+последний снимок. Отдельное событие успешного взаимодействия не отправляется.
+Frontend пока не применяет состояния объектов к 3D-моделям.

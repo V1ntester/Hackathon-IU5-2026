@@ -243,7 +243,7 @@ Backend может отправлять по существующему WebSocke
 в `web/src/network/ServerEvent.ts`.
 
 ```json
-{"type": "event", "name": "example", "payload": {"object_id": "office-door"}}
+{"type": "event", "name": "example", "payload": {"object_id": "office-light"}}
 ```
 
 `type` всегда равен `event`, `name` — имя события (1–100 символов),
@@ -254,7 +254,7 @@ Backend может отправлять по существующему WebSocke
 
 ```python
 await session_service.send_event(
-    player_id, ServerEvent(name="example", payload={"object_id": "office-door"})
+    player_id, ServerEvent(name="example", payload={"object_id": "office-light"})
 )
 ```
 
@@ -275,7 +275,7 @@ callback событие игнорируется. Отображение и иг
 `GameClient.sendInteract(objectId)` отправляет:
 
 ```json
-{"type": "interact", "object_id": "office-door"}
+{"type": "interact", "object_id": "office-light"}
 ```
 
 Метод возвращает `true`, когда сообщение передано WebSocket, и `false`, если
