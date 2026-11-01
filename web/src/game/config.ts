@@ -33,4 +33,5 @@ export const SPAWN = {
   yaw: 0,
 } as const;
 
+export const ASSETS_URL = "/assets/";
 export const GRID_TEXTURE_URL = "textures/prototype/texture_03.png";

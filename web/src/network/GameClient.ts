@@ -1,8 +1,12 @@
+import { isWorldObjectState, type WorldObjectState } from "./WorldObjectState";
+import { isServerEvent, type ServerEvent } from "./ServerEvent";
+
 export interface PlayerState {
   id: string;
   display_name: string;
   position: { x: number; y: number; z: number };
   rotation_y: number;
+  last_interaction_object_id?: string | null;
 }
 
 export interface Scenario {
@@ -14,7 +18,9 @@ export interface Scenario {
 interface Callbacks {
   status: (message: string, connected: boolean) => void;
   state: (players: PlayerState[], localId: string) => void;
+  objects?: (objects: WorldObjectState[]) => void;
   connected: () => void;
+  event?: (event: ServerEvent) => void;
 }
 
 export class GameClient {
@@ -67,13 +73,24 @@ export class GameClient {
       };
       socket.onmessage = (event: MessageEvent) => {
         try {
-          const state = JSON.parse(String(event.data)) as { type: string; players: PlayerState[] };
+          const message: unknown = JSON.parse(String(event.data));
+          if (isServerEvent(message)) {
+            this.callbacks.event?.(message);
+            return;
+          }
+          if (!message || typeof message !== "object") return;
+          const state = message as { type: string; players: PlayerState[]; objects?: unknown };
           if (state.type !== "state" || !Array.isArray(state.players)) return;
           const valid = state.players.every((player) =>
             typeof player.id === "string" && typeof player.display_name === "string" &&
             player.position && [player.position.x, player.position.y, player.position.z,
               player.rotation_y].every((value) => typeof value === "number" && Number.isFinite(value)));
-          if (valid && this.playerId) this.callbacks.state(state.players, this.playerId);
+          if (valid && this.playerId) {
+            this.callbacks.state(state.players, this.playerId);
+            if (Array.isArray(state.objects) && state.objects.every(isWorldObjectState)) {
+              this.callbacks.objects?.(state.objects);
+            }
+          }
         } catch {
           this.callbacks.status("Получено некорректное состояние комнаты", false);
         }
@@ -109,6 +126,14 @@ export class GameClient {
     // Babylon допускает накопленный yaw, сервер принимает ограниченный диапазон.
     const yaw = Math.atan2(Math.sin(rotationY), Math.cos(rotationY));
     this.socket.send(JSON.stringify({ type: "move", position, rotation_y: yaw }));
+  }
+
+  sendInteract(objectId: string): boolean {
+    const id = objectId.trim();
+    if (!id || [...id].length > 100) throw new Error("Некорректный идентификатор объекта");
+    if (this.socket?.readyState !== WebSocket.OPEN || this.socket.bufferedAmount > 0) return false;
+    this.socket.send(JSON.stringify({ type: "interact", object_id: id }));
+    return true;
   }
 
   scenarios(): Promise<Scenario[]> {
