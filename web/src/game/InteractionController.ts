@@ -2,12 +2,14 @@ import type { FirstPersonController } from "../player/FirstPersonController";
 import type { Hud } from "../ui/Hud";
 import type { Office } from "../world/Office";
 import { InterviewPanel } from "../ui/InterviewPanel";
+import { NpcDialogPanel } from "../ui/NpcDialogPanel";
 import type { SceneManager } from "./SceneManager";
 
-type OfficeInteraction = "door" | "light";
+type OfficeInteraction = "door" | "light" | "npc";
 
 export class InteractionController {
   private readonly interviewPanel: InterviewPanel;
+  private readonly npcDialog: NpcDialogPanel;
 
   constructor(
     private readonly scenes: SceneManager,
@@ -20,6 +22,7 @@ export class InteractionController {
     private readonly requestLightInteraction: () => boolean,
   ) {
     this.interviewPanel = new InterviewPanel(uiRoot, this.returnToOffice);
+    this.npcDialog = new NpcDialogPanel(uiRoot, this.closeConversation);
     this.scenes.office.onBeforeRenderObservable.add(this.update);
     window.addEventListener("keydown", this.onKeyDown);
   }
@@ -28,6 +31,7 @@ export class InteractionController {
     this.scenes.office.onBeforeRenderObservable.removeCallback(this.update);
     window.removeEventListener("keydown", this.onKeyDown);
     this.interviewPanel.dispose();
+    this.npcDialog.dispose();
   }
 
   private getNearestInteraction(): OfficeInteraction | null {
@@ -35,6 +39,7 @@ export class InteractionController {
     const targets = [
       { type: "door" as const, position: this.world.interviewDoorPosition, radius: 2.25 },
       { type: "light" as const, position: this.world.lightSwitchPosition, radius: 1.65 },
+      { type: "npc" as const, position: this.world.npcs.conversationPosition, radius: 2.6 },
     ];
     let nearest: OfficeInteraction | null = null;
     let nearestDistance = Number.POSITIVE_INFINITY;
@@ -51,9 +56,11 @@ export class InteractionController {
 
   private showOfficePrompt(interaction: OfficeInteraction): void {
     if (interaction === "door") {
-      this.hud.showPrompt("E — войти в кабинет для интервью");
+      this.hud.showPrompt("E — Войти в кабинет для интервью");
+    } else if (interaction === "npc") {
+      this.hud.showPrompt("E — Поговорить с NPC");
     } else {
-      this.hud.showPrompt(`E — ${this.world.isLightOn ? "выключить" : "включить"} свет`);
+      this.hud.showPrompt(`E — ${this.world.isLightOn ? "Выключить" : "Включить"} свет`);
     }
   }
 
@@ -79,6 +86,23 @@ export class InteractionController {
     this.interviewPanel.setActive(true);
   }
 
+  private openConversation(): void {
+    this.world.npcs.startConversation();
+    this.player.setEnabled(false);
+    this.hud.setConversationOpen(true);
+    this.hud.hidePrompt();
+    this.npcDialog.setActive(true);
+    if (document.pointerLockElement === this.canvas) document.exitPointerLock();
+  }
+
+  private readonly closeConversation = (): void => {
+    if (!this.npcDialog.isOpen) return;
+
+    this.npcDialog.setActive(false);
+    this.hud.setConversationOpen(false);
+    this.requestPointerLock();
+  };
+
   private readonly returnToOffice = (): void => {
     if (!this.scenes.isInterviewActive || !this.interviewPanel.canExit) return;
 
@@ -90,7 +114,15 @@ export class InteractionController {
   };
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
-    if (event.repeat || event.code !== "KeyE") return;
+    if (event.repeat) return;
+    if (this.npcDialog.isOpen) {
+      if (event.code === "Escape") {
+        event.preventDefault();
+        this.closeConversation();
+      }
+      return;
+    }
+    if (event.code !== "KeyE") return;
 
     if (this.scenes.isInterviewActive) {
       if (event.target instanceof HTMLElement && event.target.closest("input, textarea, select")) return;
@@ -108,10 +140,10 @@ export class InteractionController {
     event.preventDefault();
     if (interaction === "door") {
       this.enterInterview();
-    } else {
-      if (!this.requestLightInteraction()) {
-        this.hud.showError("Не удалось переключить свет. Проверьте подключение и попробуйте ещё раз.");
-      }
+    } else if (interaction === "npc") {
+      this.openConversation();
+    } else if (!this.requestLightInteraction()) {
+      this.hud.showError("Не удалось переключить свет. Проверьте подключение и попробуйте ещё раз.");
     }
   };
 }
