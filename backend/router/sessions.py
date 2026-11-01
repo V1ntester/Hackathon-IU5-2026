@@ -6,11 +6,12 @@ from fastapi import APIRouter, WebSocket
 from pydantic import ValidationError
 from starlette.websockets import WebSocketDisconnect
 
+from backend.dtos import ServerEvent
 from backend.config import get_settings
 from backend.database import session_factory
 from backend.router.commands import parse_command
 from backend.services.players import PlayerService
-from backend.services.sessions import SessionParticipant, SessionService
+from backend.services.sessions import ObjectNotFoundError, SessionParticipant, SessionService
 
 settings = get_settings()
 
@@ -56,7 +57,13 @@ async def websocket_endpoint(websocket: WebSocket, player_id: UUID):
             except ValidationError:
                 await websocket.close(code=1008, reason="Некорректная команда")
                 break
-            game_session.handle_command(peer, command)
+            try:
+                game_session.handle_command(peer, command)
+            except ObjectNotFoundError as exc:
+                await peer.send_event(ServerEvent(
+                    name="command_rejected",
+                    payload={"command": command.type, "code": "object_not_found", "object_id": str(exc)},
+                ))
     except WebSocketDisconnect:
         pass
     finally:
