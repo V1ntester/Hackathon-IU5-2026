@@ -17,6 +17,12 @@ import { OfficeNpcs } from "./OfficeNpcs";
 
 const TOTAL_WIDTH = WORLD.size + WORLD.wallThickness * 2;
 
+function enableCollisions(meshes: readonly AbstractMesh[]): void {
+  for (const mesh of meshes) {
+    mesh.checkCollisions = mesh.getTotalVertices() > 0;
+  }
+}
+
 /**
  * Каркас офиса: пол, потолок, глухие стены, витражные стены,
  * колонны и потолочные светильники. Мебель и NPC загружаются асинхронно из GLB.
@@ -445,6 +451,7 @@ export class Office {
   async setupOfficeProps(): Promise<void> {
     try {
       const doorResult = await ImportMeshAsync("low_poly_door.glb", this.scene, { rootUrl: ASSETS_URL });
+      enableCollisions(doorResult.meshes);
       const door = doorResult.meshes[0];
       if (door) {
         door.position = this.interviewDoorPosition.clone();
@@ -453,6 +460,7 @@ export class Office {
       }
 
       const switchResult = await ImportMeshAsync("light_switch.glb", this.scene, { rootUrl: ASSETS_URL });
+      enableCollisions(switchResult.meshes);
       const lightSwitch = switchResult.meshes[0];
       if (lightSwitch) {
         lightSwitch.name = "officeLightSwitch";
@@ -474,18 +482,21 @@ export class Office {
         const deskResult = await ImportMeshAsync("low-poly_desk_blockbench.glb", this.scene, {
           rootUrl: ASSETS_URL,
         });
+        enableCollisions(deskResult.meshes);
         const desk = deskResult.meshes[0];
         if (desk) desk.position = pos;
 
         const pcResult = await ImportMeshAsync("hand-painted_low_poly_computer.glb", this.scene, {
           rootUrl: ASSETS_URL,
         });
+        enableCollisions(pcResult.meshes);
         const pc = pcResult.meshes[0];
         if (pc) pc.position = new Vector3(pos.x, pos.y + 1.12, pos.z);
 
         const chairResult = await ImportMeshAsync("low_poly_office_chair.glb", this.scene, {
           rootUrl: ASSETS_URL,
         });
+        enableCollisions(chairResult.meshes);
         const chair = chairResult.meshes[0];
         if (chair) {
           chair.position = new Vector3(pos.x, pos.y, pos.z + 1.2);
@@ -496,6 +507,7 @@ export class Office {
       const signResult = await ImportMeshAsync("psx_wet_floor_sign.glb", this.scene, {
         rootUrl: ASSETS_URL,
       });
+      enableCollisions(signResult.meshes);
       const sign = signResult.meshes[0];
       if (sign) sign.position = new Vector3(1.5, 0, -8.5);
 

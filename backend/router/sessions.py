@@ -1,5 +1,7 @@
 import asyncio
+import ipaddress
 from contextlib import suppress
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from fastapi import APIRouter, WebSocket
@@ -9,7 +11,7 @@ from starlette.websockets import WebSocketDisconnect
 from backend.dtos import ServerEvent
 from backend.config import get_settings
 from backend.database import session_factory
-from backend.router.commands import parse_command
+from backend.router.commands import parse_command, parse_fps_report, parse_pong
 from backend.services.players import PlayerService
 from backend.services.sessions import ObjectNotFoundError, SessionParticipant, SessionService
 
@@ -18,10 +20,30 @@ settings = get_settings()
 router = APIRouter(tags=["sessions"])
 
 
+def _origin_allowed(origin: str) -> bool:
+    if origin in settings.cors_origins:
+        return True
+    if not settings.allow_lan_websocket_origins:
+        return False
+    try:
+        parsed = urlsplit(origin)
+        address = ipaddress.ip_address(parsed.hostname or "")
+        return (
+            parsed.scheme == "http"
+            and parsed.port == 5173
+            and address.is_private
+            and not address.is_reserved
+            and not address.is_loopback
+            and not address.is_link_local
+        )
+    except ValueError:
+        return False
+
+
 @router.websocket("/ws/{player_id}")
 async def websocket_endpoint(websocket: WebSocket, player_id: UUID):
     origin = websocket.headers.get("origin")
-    if origin is not None and origin not in settings.cors_origins:
+    if origin is not None and not _origin_allowed(origin):
         await websocket.close(code=1008)
         return
     async with session_factory() as session:
@@ -38,6 +60,7 @@ async def websocket_endpoint(websocket: WebSocket, player_id: UUID):
         await websocket.close(code=1008, reason="Игрок уже подключён")
         return
     sender = asyncio.create_task(peer.send_snapshots())
+    heartbeat = asyncio.create_task(game_session.heartbeat(peer))
     try:
         async with session_factory() as session:
             await PlayerService(session).record_connection(str(player_id))
@@ -55,8 +78,18 @@ async def websocket_endpoint(websocket: WebSocket, player_id: UUID):
             try:
                 command = parse_command(raw)
             except ValidationError:
-                await websocket.close(code=1008, reason="Некорректная команда")
-                break
+                try:
+                    pong = parse_pong(raw)
+                except ValidationError:
+                    try:
+                        fps_report = parse_fps_report(raw)
+                    except ValidationError:
+                        await websocket.close(code=1008, reason="Некорректная команда")
+                        break
+                    game_session.record_fps(peer, fps_report)
+                    continue
+                game_session.record_pong(peer, pong)
+                continue
             try:
                 game_session.handle_command(peer, command)
             except ObjectNotFoundError as exc:
@@ -69,5 +102,6 @@ async def websocket_endpoint(websocket: WebSocket, player_id: UUID):
     finally:
         game_session.disconnect(peer)
         sender.cancel()
+        heartbeat.cancel()
         with suppress(asyncio.CancelledError):
-            await sender
+            await asyncio.gather(sender, heartbeat)

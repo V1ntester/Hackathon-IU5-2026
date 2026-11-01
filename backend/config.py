@@ -9,6 +9,7 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://game:game@localhost:5435/interview_game"
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    allow_lan_websocket_origins: bool = False
     qwen_url: str = "http://localhost:8081/v1/chat/completions"
     qwen_model: str = "Qwen3-4B-Instruct-2507"
     qwen_context_tokens: int = Field(default=4096, ge=640)

@@ -33,7 +33,7 @@ WebSocket и HTTP обслуживаются одним приложением, 
 WebSocket передаёт перемещения, HTTP обслуживает данные и запросы к ИИ.
 Запрос к ИИ не требует открытого WebSocket, достаточно существующего гостя в БД.
 Текущий UI разрешает отправку NPC после установления WebSocket-соединения.
-В dev-режиме Vite на `127.0.0.1:5173` проксирует `/api` и `/ws` на
+В dev-режиме Vite на `0.0.0.0:5173` проксирует `/api` и `/ws` на
 `http://127.0.0.1:8000`; адрес можно переопределить `BACKEND_PROXY_TARGET`.
 `VITE_BACKEND_URL` переключает браузер на прямой HTTP/WebSocket-доступ к backend.
 Для сборки нужен reverse proxy этих путей либо явный адрес backend;
@@ -473,8 +473,7 @@ callback событие игнорируется. `Game` отображает о
   "type": "state",
   "revision": 2,
   "objects": [{"id": "office-light", "state": "active"}],
-  "players": [],
-  "objects": [{"id": "office-light", "state": "active"}]
+  "players": []
 }
 ```
 
