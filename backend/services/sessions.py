@@ -1,12 +1,18 @@
 import asyncio
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from time import monotonic
 
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
-from backend.dtos import ServerEvent
+from backend.dtos import ServerEvent, WorldObjectRead
+from backend.models.world_object import WorldObject
 from backend.dtos.commands import Command, InteractCommand, MoveCommand
+
+
+class ObjectNotFoundError(LookupError):
+    pass
 
 
 @dataclass
@@ -54,7 +60,15 @@ class SessionParticipant:
 class SessionService:
     """Одна общая игровая сессия на процесс; методы без await атомарны в event loop."""
 
-    def __init__(self):
+    def __init__(self, objects: Iterable[WorldObject] | None = None):
+        initial_objects = list(objects) if objects is not None else [WorldObject(id="office-light")]
+        self.objects: dict[str, WorldObject] = {}
+        for obj in initial_objects:
+            if not obj.id.strip() or len(obj.id) > 100 or obj.id != obj.id.strip():
+                raise ValueError("Invalid world object ID")
+            if obj.id in self.objects:
+                raise ValueError(f"Duplicate world object ID: {obj.id}")
+            self.objects[obj.id] = obj
         self.participants: dict[str, SessionParticipant] = {}
         self.revision = 0
 
@@ -89,7 +103,11 @@ class SessionService:
         self.broadcast()
 
     def interact(self, participant: SessionParticipant, command: InteractCommand) -> None:
-        participant.last_interaction_object_id = command.object_id
+        obj = self.objects.get(command.object_id)
+        if obj is None:
+            raise ObjectNotFoundError(command.object_id)
+        self.objects[obj.id] = obj.interact()
+        participant.last_interaction_object_id = obj.id
         self.broadcast()
 
     async def send_event(self, player_id: str, event: ServerEvent) -> bool:
@@ -110,6 +128,10 @@ class SessionService:
         snapshot = {
             "type": "state",
             "revision": self.revision,
+            "objects": [
+                WorldObjectRead.model_validate(obj).model_dump(mode="json")
+                for obj in self.objects.values()
+            ],
             "players": [
                 {"id": participant.player_id, "display_name": participant.display_name,
                  "position": participant.position, "rotation_y": participant.rotation_y,
