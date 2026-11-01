@@ -13,6 +13,7 @@ export class Hud {
 
   private started = false;
   private interviewMode = false;
+  private conversationOpen = false;
 
   constructor(mount: HTMLElement, onEnter: () => void) {
     const root = document.createElement("div");
@@ -91,7 +92,7 @@ export class Hud {
   }
 
   setPlaying(playing: boolean): void {
-    if (this.interviewMode) return;
+    if (this.interviewMode || this.conversationOpen) return;
     this.root.classList.toggle("is-playing", playing);
 
     if (playing) {
@@ -126,6 +127,15 @@ export class Hud {
       ? "Ответьте на вопрос, чтобы вернуться в офис"
       : "WASD — движение · Shift — бег · E — взаимодействие · Esc — пауза";
     if (active) this.error.hidden = true;
+  }
+
+  setConversationOpen(open: boolean): void {
+    this.conversationOpen = open;
+    this.root.classList.toggle("is-conversing", open);
+    if (!open) {
+      this.root.classList.remove("is-playing");
+      this.overlay.setAttribute("aria-hidden", "false");
+    }
   }
 
   public showPrompt(text: string): void {

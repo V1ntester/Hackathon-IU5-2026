@@ -367,6 +367,16 @@ body {
   display: none;
 }
 
+.hud.is-conversing .hud__overlay {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.hud.is-conversing .hud__crosshair {
+  opacity: 0;
+}
+
 .hud.is-interview::before {
   opacity: 1;
 }
