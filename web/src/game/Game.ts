@@ -24,6 +24,7 @@ export class Game {
   private readonly canvas: HTMLCanvasElement;
   private readonly interactions: InteractionController;
   private readonly movementTimer: ReturnType<typeof setInterval>;
+  private readonly fpsTimer: ReturnType<typeof setInterval>;
 
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     this.canvas = canvas;
@@ -81,6 +82,7 @@ export class Game {
 
     // Интервал выше 50 мс: сервер ограничивает частоту принятых перемещений.
     this.movementTimer = setInterval(this.sendPosition, 80);
+    this.fpsTimer = setInterval(() => this.network.sendFps(this.engine.getFps()), 2000);
     void this.network.connect();
 
     document.addEventListener("pointerlockchange", this.onPointerLockChange);
@@ -99,6 +101,7 @@ export class Game {
     window.removeEventListener("resize", this.onResize);
 
     clearInterval(this.movementTimer);
+    clearInterval(this.fpsTimer);
     this.interactions.dispose();
     this.network.dispose();
     this.remotePlayers.dispose();

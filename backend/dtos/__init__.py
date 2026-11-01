@@ -1,6 +1,8 @@
 """Request, response and WebSocket data transfer objects."""
 
+from backend.dtos.admin_connections import AdminConnectionRead
 from backend.dtos.event import ServerEvent
+from backend.dtos.heartbeat import ClientFpsReport, ClientPong
 from backend.dtos.world_object import WorldObjectRead
 from backend.dtos.player import PlayerCreate, PlayerRead
 from backend.dtos.stats import StatsRead
@@ -11,6 +13,9 @@ from backend.dtos.realtime import Position
 
 __all__ = [
     "ServerEvent",
+    "ClientPong",
+    "ClientFpsReport",
+    "AdminConnectionRead",
     "WorldObjectRead",
     "PlayerCreate",
     "PlayerRead",

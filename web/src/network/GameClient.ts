@@ -75,6 +75,12 @@ export class GameClient {
         try {
           const message: unknown = JSON.parse(String(event.data));
           if (isServerEvent(message)) {
+            if (message.name === "ping" && typeof message.payload.nonce === "string") {
+              if (this.socket?.readyState === WebSocket.OPEN) {
+                this.socket.send(JSON.stringify({ type: "pong", nonce: message.payload.nonce }));
+              }
+              return;
+            }
             this.callbacks.event?.(message);
             return;
           }
@@ -126,6 +132,12 @@ export class GameClient {
     // Babylon допускает накопленный yaw, сервер принимает ограниченный диапазон.
     const yaw = Math.atan2(Math.sin(rotationY), Math.cos(rotationY));
     this.socket.send(JSON.stringify({ type: "move", position, rotation_y: yaw }));
+  }
+
+  sendFps(fps: number): void {
+    if (!Number.isFinite(fps) || fps < 0 || fps > 240) return;
+    if (this.socket?.readyState !== WebSocket.OPEN) return;
+    this.socket.send(JSON.stringify({ type: "fps", value: fps }));
   }
 
   sendInteract(objectId: string): boolean {

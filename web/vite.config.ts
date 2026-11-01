@@ -4,10 +4,9 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, ".", "");
   const target = env.BACKEND_PROXY_TARGET || "http://127.0.0.1:8000";
   return {
-    // Относительные пути статических ресурсов; API имеет собственные пути от корня.
     base: "./",
     server: {
-      host: "127.0.0.1",
+      host: "0.0.0.0",
       port: 5173,
       strictPort: true,
       proxy: {
@@ -17,6 +16,12 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       target: "es2022",
+      rollupOptions: {
+        input: {
+          game: "index.html",
+          admin: "admin/index.html",
+        },
+      },
     },
   };
 });
