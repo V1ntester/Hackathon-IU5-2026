@@ -13,16 +13,18 @@ import "@babylonjs/loaders";
 import { ASSETS_URL, PLAYER, SPAWN, WORLD } from "../game/config";
 import { createLighting, type OfficeLighting } from "./lighting";
 import { createMaterials, type OfficeMaterials } from "./materials";
+import { OfficeNpcs } from "./OfficeNpcs";
 
 const TOTAL_WIDTH = WORLD.size + WORLD.wallThickness * 2;
 
 /**
  * Каркас офиса: пол, потолок, глухие стены, витражные стены,
- * колонны и потолочные светильники. Мебель загружается асинхронно из GLB.
+ * колонны и потолочные светильники. Мебель и NPC загружаются асинхронно из GLB.
  */
 export class Office {
   readonly spawn: Vector3;
   readonly materials: OfficeMaterials;
+  readonly npcs: OfficeNpcs;
   readonly interviewDoorPosition = new Vector3(0, 0, -13);
   readonly lightSwitchPosition = new Vector3(1.35, 1.15, -12.97);
   isLightOn = true;
@@ -34,6 +36,7 @@ export class Office {
     this.scene = scene;
     this.materials = createMaterials(scene);
     this.lighting = createLighting(scene);
+    this.npcs = new OfficeNpcs(scene, this.lighting.shadows);
 
     this.buildFloor();
     this.buildCeiling();

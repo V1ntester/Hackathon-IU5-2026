@@ -46,6 +46,7 @@ export class Game {
 
     this.world = new Office(this.scene);
     this.player = new FirstPersonController(this.scene, canvas, this.world.spawn);
+    void this.world.npcs.init(this.player.camera);
     this.interview = new InterviewRoom(this.engine);
     this.hud = new Hud(uiRoot, this.requestPointerLock);
     this.remotePlayers = new RemotePlayers(this.scene);
