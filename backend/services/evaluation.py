@@ -19,7 +19,7 @@ from backend.services.interviews import InterviewService
 logger = logging.getLogger(__name__)
 
 
-def build_report(items: list[InterviewItem]) -> str:
+def build_report(items: list[InterviewItem], topic: str | None = None) -> str:
     sections, recommendations, total = [], [], 0
     for item in items:
         grade = EvaluationResult.model_validate(item.evaluation)
@@ -29,7 +29,7 @@ def build_report(items: list[InterviewItem]) -> str:
             f"Что получилось: {grade.strength}\nЧто улучшить: {grade.issue}\nРекомендация: {grade.recommendation}")
         if grade.recommendation:
             recommendations.append(f"{item.position}. {grade.recommendation}")
-    return "\n\n".join(sections) + f"\n\nСумма: {total}/24\nПроцент: {round(100 * total / 24)}%\nРекомендации:\n" + "\n".join(recommendations)
+    return f"Тема интервью: {topic or 'Все темы'}\n\n" + "\n\n".join(sections) + f"\n\nСумма: {total}/24\nПроцент: {round(100 * total / 24)}%\nРекомендации:\n" + "\n".join(recommendations)
 
 
 class EvaluationService:
@@ -109,7 +109,7 @@ class EvaluationService:
             return
         items = await InterviewService(self.session).items(attempt_id)
         if all(i.evaluation_status == "completed" for i in items):
-            attempt.report_text = build_report(items)
+            attempt.report_text = build_report(items, attempt.topic)
             attempt.completed_at, attempt.status = utc_now(), "completed"
         else:
             attempt.status = "evaluation_failed"

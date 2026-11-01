@@ -4,10 +4,11 @@ from backend.models.base import Base
 from backend.models.player_stats import PlayerStats
 from backend.models.scenario import Scenario
 from backend.models.user import User
+from backend.models.interview_settings import InterviewSettings
 from backend.models.world_object import ObjectState, WorldObject
 from backend.models.practice import (Conversation, DialogueTurn, ScenarioKnowledge,
     InterviewQuestion, QuestionKnowledge, InterviewAttempt, InterviewItem)
 
 __all__ = ["Base", "PlayerStats", "Scenario", "User", "ObjectState", "WorldObject",
     "Conversation", "DialogueTurn", "ScenarioKnowledge", "InterviewQuestion",
-    "QuestionKnowledge", "InterviewAttempt", "InterviewItem"]
+    "QuestionKnowledge", "InterviewAttempt", "InterviewItem", "InterviewSettings"]

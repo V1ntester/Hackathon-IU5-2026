@@ -25,6 +25,7 @@ export interface DialogueTurn {
 
 export interface InterviewState {
   id: string;
+  topic: string | null;
   status: "in_progress" | "ready_for_evaluation" | "evaluating" | "completed" | "evaluation_failed";
   answered: number;
   evaluated: number;

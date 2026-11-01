@@ -11,6 +11,7 @@ from backend.models.base import utc_now
 from backend.services.ai_inference import AIInferenceService
 from backend.services.context_builder import ContextBuilder
 from backend.services.knowledge import KnowledgeService
+from backend.services.interview_settings import InterviewSettingsService
 from backend.services.players import PlayerService
 from backend.services.scenarios import ScenarioService
 
@@ -64,8 +65,12 @@ class InterviewService:
             result = existing.id
             await self.session.commit()
             return result
-        questions = (await self.session.scalars(select(InterviewQuestion).where(
-            InterviewQuestion.scenario_id == scenario_id, InterviewQuestion.enabled.is_(True)))).all()
+        topic = await InterviewSettingsService(self.session).selected(scenario_id)
+        query = select(InterviewQuestion).where(
+            InterviewQuestion.scenario_id == scenario_id, InterviewQuestion.enabled.is_(True))
+        if topic is not None:
+            query = query.where(InterviewQuestion.topic == topic)
+        questions = (await self.session.scalars(query)).all()
         snapshots = []
         for q in questions:
             if (not q.text.strip() or not q.reference_answer.strip()
@@ -74,13 +79,15 @@ class InterviewService:
                 or not isinstance(q.common_errors, list)
                 or not all(isinstance(p, str) for p in q.common_errors)):
                 continue
-            snapshots.append(dict(question_id=q.id, question_version=q.version, text=q.text,
+            snapshots.append(dict(question_id=q.id, question_version=q.version, topic=q.topic, text=q.text,
                 reference_answer=q.reference_answer, required_points=q.required_points, common_errors=q.common_errors,
                 knowledge=await KnowledgeService(self.session).linked(q.id, scenario_id)))
         # Снимки уже в обычных структурах. Токенизация выполняется вне транзакции.
         await self.session.commit()
+        pool_error = (f"В теме «{topic}» менее четырёх пригодных активных вопросов"
+                      if topic else "В сценарии менее четырёх пригодных активных вопросов")
         if len(snapshots) < 4:
-            raise HTTPException(409, "В сценарии менее четырёх пригодных активных вопросов")
+            raise HTTPException(409, pool_error)
         eligible = []
         try:
             async with asyncio.timeout(300):
@@ -90,7 +97,7 @@ class InterviewService:
         except TimeoutError as exc:
             raise HTTPException(504, "Истёк срок проверки размера пула вопросов") from exc
         if len(eligible) < 4:
-            raise HTTPException(409, "В сценарии менее четырёх пригодных активных вопросов")
+            raise HTTPException(409, pool_error)
         chosen = random.SystemRandom().sample(eligible, 4)
         # Сериализация создания и повторная проверка ключа после токенизации.
         await self.session.execute(select(User.id).where(User.id == player_id).with_for_update())
@@ -101,7 +108,7 @@ class InterviewService:
                 raise HTTPException(409, "request_id уже использован для другого сценария")
             result = existing.id
         else:
-            attempt = InterviewAttempt(player_id=player_id, scenario_id=scenario_id, request_id=request_id)
+            attempt = InterviewAttempt(player_id=player_id, scenario_id=scenario_id, request_id=request_id, topic=topic)
             self.session.add(attempt)
             await self.session.flush()
             for position, snapshot in enumerate(chosen, 1):
@@ -115,7 +122,7 @@ class InterviewService:
         attempt = await self.require(attempt_id, player_id, scenario_id)
         items = await self.items(attempt_id)
         current = next((i for i in items if i.answer is None), None)
-        result = InterviewState(id=attempt.id, status=attempt.status,
+        result = InterviewState(id=attempt.id, status=attempt.status, topic=attempt.topic,
             answered=sum(i.answer is not None for i in items),
             evaluated=sum(i.evaluation_status == "completed" for i in items),
             current_question=CurrentQuestion(position=current.position, text=current.snapshot["text"]) if current else None)
