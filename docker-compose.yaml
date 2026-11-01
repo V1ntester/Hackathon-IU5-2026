@@ -27,6 +27,7 @@ services:
     volumes:
       - ./models/llm:/models:ro
     command:
+      - --jinja
       - -m
       - /models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf
       - --alias

@@ -38,25 +38,44 @@ class AIInferenceService:
         except (httpx.HTTPError, ValueError) as exc:
             raise HTTPException(502, "Ошибка ответа локального ИИ-сервиса") from exc
 
-    async def chat(self, prompt: str, message: str) -> str:
+    async def chat_completion(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+    ) -> dict:
+        payload = {
+            "model": self.settings.qwen_model,
+            "messages": messages,
+            "max_tokens": 192,
+            "temperature": 0.7,
+            "stream": False,
+            "chat_template_kwargs": {"enable_thinking": False},
+        }
+        if tools is not None:
+            payload["tools"] = tools
+            payload["tool_choice"] = "auto"
+
         async with self.qwen_slots:
-            result = await self._request(self.settings.qwen_url, json={
-                "model": self.settings.qwen_model,
-                "messages": [
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": message},
-                ],
-                "max_tokens": 192,
-                "temperature": 0.7,
-                "stream": False,
-                "chat_template_kwargs": {"enable_thinking": False},
-            })
+            result = await self._request(self.settings.qwen_url, json=payload)
         try:
-            reply = result["choices"][0]["message"]["content"]
+            assistant_message = result["choices"][0]["message"]
+            if not isinstance(assistant_message, dict):
+                raise ValueError("Invalid assistant message")
+            return assistant_message
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
+            raise HTTPException(502, "Qwen вернул некорректный ответ") from exc
+
+    async def chat(self, prompt: str, message: str) -> str:
+        assistant_message = await self.chat_completion([
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": message},
+        ])
+        try:
+            reply = assistant_message["content"]
             if not isinstance(reply, str) or not reply.strip():
                 raise ValueError("Empty reply")
             return reply.strip()
-        except (KeyError, IndexError, TypeError, ValueError) as exc:
+        except (KeyError, TypeError, ValueError) as exc:
             raise HTTPException(502, "Qwen вернул ответ без текста") from exc
 
     async def transcribe(self, audio: bytes, content_type: str, language: str = "auto") -> str:
