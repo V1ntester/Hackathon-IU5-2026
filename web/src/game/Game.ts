@@ -1,11 +1,4 @@
-import {
-  Color4,
-  DefaultRenderingPipeline,
-  Engine,
-  ImageProcessingConfiguration,
-  Scene,
-  Vector3,
-} from "@babylonjs/core";
+import { Color4, Engine, Scene, Vector3 } from "@babylonjs/core";
 import { FirstPersonController } from "../player/FirstPersonController";
 import { Hud } from "../ui/Hud";
 import { Office } from "../world/Office";
@@ -13,6 +6,8 @@ import { InterviewRoom } from "../world/InterviewRoom";
 import { GameClient } from "../network/GameClient";
 import { RemotePlayers } from "../world/RemotePlayers";
 import { OnlinePanel } from "../ui/OnlinePanel";
+import { SceneManager } from "./SceneManager";
+import { InteractionController } from "./InteractionController";
 
 export class Game {
   readonly engine: Engine;
@@ -24,17 +19,14 @@ export class Game {
   readonly network: GameClient;
   readonly remotePlayers: RemotePlayers;
   readonly online: OnlinePanel;
+  readonly scenes: SceneManager;
 
   private readonly canvas: HTMLCanvasElement;
+  private readonly interactions: InteractionController;
   private readonly movementTimer: ReturnType<typeof setInterval>;
-  private readonly officeReturnPosition = Vector3.Zero();
-  private readonly officeReturnRotation = Vector3.Zero();
-  private mode: "office" | "interview" = "office";
-  private npcNearby = false;
 
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     this.canvas = canvas;
-
     this.engine = new Engine(
       canvas,
       true,
@@ -58,37 +50,33 @@ export class Game {
     this.hud = new Hud(uiRoot, this.requestPointerLock);
     this.remotePlayers = new RemotePlayers(this.scene);
     this.network = new GameClient({
-      status: (message, connected) => this.online.setStatus(message, connected),
+      status: (message) => this.online.setStatus(message),
       state: (players, localId) => {
         this.remotePlayers.sync(players, localId);
         this.online.setPlayerCount(players.length);
       },
-      connected: () => {
-        this.sendPosition();
-        void this.online.loadScenarios();
-      },
+      connected: () => this.sendPosition(),
     });
-    this.online = new OnlinePanel(uiRoot, this.network, () => this.setNpcOpen(false));
+    this.online = new OnlinePanel(uiRoot);
+    this.scenes = new SceneManager(this.engine, this.scene, this.interview, this.player);
+    this.interactions = new InteractionController(
+      this.scenes,
+      this.world,
+      this.player,
+      this.hud,
+      canvas,
+      uiRoot,
+      this.requestPointerLock,
+    );
+
     // Интервал выше 50 мс: сервер ограничивает частоту принятых перемещений.
     this.movementTimer = setInterval(this.sendPosition, 80);
     void this.network.connect();
 
-    this.scene.onBeforeRenderObservable.add(this.checkInteractions);
-
-    this.setupRenderPipeline();
-
     document.addEventListener("pointerlockchange", this.onPointerLockChange);
     document.addEventListener("pointerlockerror", this.onPointerLockError);
     window.addEventListener("resize", this.onResize);
-    window.addEventListener("keydown", this.onInteractionKey);
-
-    this.engine.runRenderLoop(() => {
-      if (this.mode === "interview") {
-        this.interview.scene.render();
-      } else {
-        this.scene.render();
-      }
-    });
+    this.scenes.start();
   }
 
   dispose(): void {
@@ -99,14 +87,13 @@ export class Game {
     document.removeEventListener("pointerlockchange", this.onPointerLockChange);
     document.removeEventListener("pointerlockerror", this.onPointerLockError);
     window.removeEventListener("resize", this.onResize);
-    window.removeEventListener("keydown", this.onInteractionKey);
 
     clearInterval(this.movementTimer);
-    this.scene.onBeforeRenderObservable.removeCallback(this.checkInteractions);
+    this.interactions.dispose();
     this.network.dispose();
     this.remotePlayers.dispose();
     this.online.dispose();
-    this.engine.stopRenderLoop();
+    this.scenes.dispose();
     this.player.dispose();
     this.hud.dispose();
     this.interview.dispose();
@@ -114,43 +101,9 @@ export class Game {
     this.engine.dispose();
   }
 
-  private setupRenderPipeline(): void {
-    this.configureRenderPipeline(
-      new DefaultRenderingPipeline("officePipeline", true, this.scene, [this.player.camera]),
-    );
-    this.configureRenderPipeline(
-      new DefaultRenderingPipeline("interviewPipeline", true, this.interview.scene, [
-        this.interview.camera,
-      ]),
-    );
-  }
-
-  private configureRenderPipeline(pipeline: DefaultRenderingPipeline): void {
-    pipeline.samples = 4;
-    pipeline.fxaaEnabled = true;
-
-    pipeline.bloomEnabled = true;
-    pipeline.bloomThreshold = 0.8;
-    pipeline.bloomWeight = 0.22;
-    pipeline.bloomKernel = 48;
-    pipeline.bloomScale = 0.5;
-
-    pipeline.imageProcessingEnabled = true;
-    pipeline.imageProcessing.toneMappingEnabled = true;
-    pipeline.imageProcessing.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
-    pipeline.imageProcessing.exposure = 1.1;
-    pipeline.imageProcessing.contrast = 1.03;
-
-    pipeline.imageProcessing.vignetteEnabled = true;
-    pipeline.imageProcessing.vignetteWeight = 1.4;
-    pipeline.imageProcessing.vignetteStretch = 0.5;
-  }
-
   private readonly requestPointerLock = (): void => {
-    if (this.mode !== "office" || this.online.isOpen) return;
-    if (document.pointerLockElement === this.canvas) {
-      return;
-    }
+    if (this.scenes.isInterviewActive) return;
+    if (document.pointerLockElement === this.canvas) return;
 
     try {
       const request = this.canvas.requestPointerLock() as unknown;
@@ -165,13 +118,13 @@ export class Game {
   };
 
   private readonly onPointerLockChange = (): void => {
-    if (this.mode === "interview") {
+    if (this.scenes.isInterviewActive) {
       this.player.setEnabled(false);
       return;
     }
 
     const locked = document.pointerLockElement === this.canvas;
-    this.player.setEnabled(locked && !this.online.isOpen);
+    this.player.setEnabled(locked);
     this.hud.setPlaying(locked);
   };
 
@@ -184,103 +137,8 @@ export class Game {
   };
 
   private readonly sendPosition = (): void => {
-    if (this.mode !== "office") return;
+    if (this.scenes.isInterviewActive) return;
     const { x, y, z } = this.player.camera.position;
     this.network.sendMove({ x, y, z }, this.player.camera.rotation.y);
-  };
-
-  private setNpcOpen(open: boolean): void {
-    this.online.setOpen(open);
-    this.hud.setInteractionOpen(open);
-    if (open) {
-      this.player.setEnabled(false);
-      this.hud.hidePrompt();
-      if (document.pointerLockElement === this.canvas) document.exitPointerLock();
-    }
-  }
-
-  private isNearNpc(): boolean {
-    const npc = this.world.npc;
-    if (!npc || npc.isDisposed()) return false;
-    const position = npc.getAbsolutePosition();
-    const player = this.player.camera.position;
-    // Расстояние по полу: камера находится на высоте глаз, корень NPC — у стоп.
-    return (position.x - player.x) ** 2 + (position.z - player.z) ** 2 <= 3 ** 2;
-  }
-
-  private readonly checkInteractions = (): void => {
-    if (this.mode !== "office") return;
-    if (document.pointerLockElement !== this.canvas || this.online.isOpen) {
-      this.hud.hidePrompt();
-      return;
-    }
-    if (this.world.isNearInterviewDoor(this.player.camera.position)) {
-      this.hud.showPrompt("E — войти в кабинет для интервью");
-      return;
-    }
-    if (!this.isNearNpc()) {
-      this.npcNearby = false;
-      this.hud.hidePrompt();
-      return;
-    }
-    if (!this.npcNearby) {
-      this.npcNearby = true;
-      this.setNpcOpen(true);
-      return;
-    }
-    this.hud.showPrompt("E — снова поговорить с NPC");
-  };
-
-  private enterInterview(): void {
-    if (this.mode !== "office") return;
-
-    this.officeReturnPosition.copyFrom(this.player.camera.position);
-    this.officeReturnRotation.copyFrom(this.player.camera.rotation);
-    this.mode = "interview";
-    this.npcNearby = false;
-    this.player.setEnabled(false);
-    this.hud.setInterviewMode(true);
-    this.hud.showPrompt("E — вернуться в офис");
-    if (document.pointerLockElement === this.canvas) document.exitPointerLock();
-    this.canvas.focus({ preventScroll: true });
-  }
-
-  private returnToOffice(): void {
-    if (this.mode !== "interview") return;
-
-    this.mode = "office";
-    this.player.camera.position.copyFrom(this.officeReturnPosition);
-    this.player.camera.rotation.copyFrom(this.officeReturnRotation);
-    this.hud.setInterviewMode(false);
-    this.hud.hidePrompt();
-    this.requestPointerLock();
-  }
-
-  private readonly onInteractionKey = (event: KeyboardEvent): void => {
-    if (event.repeat) return;
-    if (event.code === "Escape" && this.online.isOpen) {
-      this.setNpcOpen(false);
-      return;
-    }
-    if (event.target instanceof HTMLElement && event.target.closest("input, textarea, select, button")) return;
-    if (event.code !== "KeyE") return;
-
-    if (this.mode === "interview") {
-      event.preventDefault();
-      this.returnToOffice();
-      return;
-    }
-    if (document.pointerLockElement !== this.canvas) return;
-
-    if (this.world.isNearInterviewDoor(this.player.camera.position)) {
-      event.preventDefault();
-      this.enterInterview();
-      return;
-    }
-    if (this.isNearNpc()) {
-      event.preventDefault();
-      this.npcNearby = true;
-      this.setNpcOpen(true);
-    }
   };
 }

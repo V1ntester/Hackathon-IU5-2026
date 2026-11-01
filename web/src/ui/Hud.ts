@@ -112,9 +112,7 @@ export class Hud {
     this.description.textContent =
       "Сессия приостановлена. Кликните, чтобы вернуться в офис — позиция сохранится.";
     this.buttonLabel.textContent = "Продолжить";
-    if (!this.root.classList.contains("is-interacting")) {
-      this.overlay.querySelector<HTMLButtonElement>(".start__button")?.focus({ preventScroll: true });
-    }
+    this.overlay.querySelector<HTMLButtonElement>(".start__button")?.focus({ preventScroll: true });
   }
 
   setInterviewMode(active: boolean): void {
@@ -125,7 +123,7 @@ export class Hud {
     this.roomSize.textContent = active ? "10 × 9 м" : "26 × 26 м";
     this.roomName.textContent = active ? "кабинет · интервью" : "офис · 1 этаж";
     this.hint.textContent = active
-      ? "Камера зафиксирована · E — вернуться в офис"
+      ? "Ответьте на вопрос, чтобы вернуться в офис"
       : "WASD — движение · Shift — бег · E — взаимодействие · Esc — пауза";
     if (active) this.error.hidden = true;
   }
@@ -142,10 +140,6 @@ export class Hud {
   showError(message: string): void {
     this.error.textContent = message;
     this.error.hidden = false;
-  }
-
-  setInteractionOpen(open: boolean): void {
-    this.root.classList.toggle("is-interacting", open);
   }
 
   dispose(): void {
