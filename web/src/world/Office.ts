@@ -1,4 +1,5 @@
 import {
+  Color3,
   Mesh,
   MeshBuilder,
   Scene,
@@ -9,7 +10,7 @@ import {
   type AbstractMesh,
 } from "@babylonjs/core";
 import "@babylonjs/loaders";
-import { PLAYER, SPAWN, WORLD } from "../game/config";
+import { ASSETS_URL, PLAYER, SPAWN, WORLD } from "../game/config";
 import { createLighting, type OfficeLighting } from "./lighting";
 import { createMaterials, type OfficeMaterials } from "./materials";
 
@@ -23,6 +24,8 @@ export class Office {
   readonly spawn: Vector3;
   readonly materials: OfficeMaterials;
   readonly interviewDoorPosition = new Vector3(0, 0, -13);
+  readonly lightSwitchPosition = new Vector3(1.35, 1.15, -12.97);
+  isLightOn = true;
 
   private readonly scene: Scene;
   private readonly lighting: OfficeLighting;
@@ -68,6 +71,14 @@ export class Office {
               this.lighting.shadows.addShadowCaster(mesh);
           }
       }
+  }
+
+  toggleLight(): void {
+    this.isLightOn = !this.isLightOn;
+    this.lighting.setEnabled(this.isLightOn);
+    this.materials.lightPanel.emissiveColor = this.isLightOn
+      ? new Color3(2.6, 2.45, 2.15)
+      : Color3.Black();
   }
 
   private buildFloor(): void {
@@ -428,60 +439,65 @@ export class Office {
   }
 
   async setupOfficeProps(): Promise<void> {
-    const modelsPath = "/models/";
-
     try {
-        // 1. Дверь в кабинет для интервью на задней стене офиса.
-        const doorResult = await ImportMeshAsync("low_poly_door.glb", this.scene, { rootUrl: modelsPath });
-        const door = doorResult.meshes[0];
-        if (door) {
-            door.position = this.interviewDoorPosition.clone();
-            door.position.y = 1.5;
-            door.metadata = { interactable: true, action: "Enter Interview" };
+      const doorResult = await ImportMeshAsync("low_poly_door.glb", this.scene, { rootUrl: ASSETS_URL });
+      const door = doorResult.meshes[0];
+      if (door) {
+        door.position = this.interviewDoorPosition.clone();
+        door.position.y = 1.5;
+        door.metadata = { interactable: true, action: "Enter Interview" };
+      }
+
+      const switchResult = await ImportMeshAsync("light_switch.glb", this.scene, { rootUrl: ASSETS_URL });
+      const lightSwitch = switchResult.meshes[0];
+      if (lightSwitch) {
+        lightSwitch.name = "officeLightSwitch";
+        lightSwitch.position = this.lightSwitchPosition.clone();
+        lightSwitch.scaling.setAll(1.5);
+        for (const mesh of switchResult.meshes) {
+          mesh.metadata = { interactable: true, action: "Toggle Light" };
         }
+      }
 
-        // 2. Координаты для рабочих мест (столы, компьютеры, стулья)
-        const deskPositions = [
-            new Vector3(-3, 0, -3),
-            new Vector3(3, 0, -3),
-            new Vector3(-3, 0, 3),
-            new Vector3(3, 0, 3)
-        ];
+      const deskPositions = [
+        new Vector3(-3, 0, -3),
+        new Vector3(3, 0, -3),
+        new Vector3(-3, 0, 3),
+        new Vector3(3, 0, 3),
+      ];
 
-        for (const pos of deskPositions) {
-            // Загрузка стола
-            const deskResult = await ImportMeshAsync("low-poly_desk_blockbench.glb", this.scene, { rootUrl: modelsPath });
-            const desk = deskResult.meshes[0];
-            if (desk) {
-              desk.position = pos;
-            }
+      for (const pos of deskPositions) {
+        const deskResult = await ImportMeshAsync("low-poly_desk_blockbench.glb", this.scene, {
+          rootUrl: ASSETS_URL,
+        });
+        const desk = deskResult.meshes[0];
+        if (desk) desk.position = pos;
 
-            // Загрузка компьютера (ставим на стол по высоте Y)
-            const pcResult = await ImportMeshAsync("hand-painted_low_poly_computer.glb", this.scene, { rootUrl: modelsPath });
-            const pc = pcResult.meshes[0];
-            if (pc) {
-              pc.position = new Vector3(pos.x, pos.y + 1.12, pos.z);
-            }
+        const pcResult = await ImportMeshAsync("hand-painted_low_poly_computer.glb", this.scene, {
+          rootUrl: ASSETS_URL,
+        });
+        const pc = pcResult.meshes[0];
+        if (pc) pc.position = new Vector3(pos.x, pos.y + 1.12, pos.z);
 
-            // Загрузка стула (ставим перед столом)
-            const chairResult = await ImportMeshAsync("low_poly_office_chair.glb", this.scene, { rootUrl: modelsPath });
-            const chair = chairResult.meshes[0];
-            if (chair) {
-                chair.position = new Vector3(pos.x, pos.y, pos.z + 1.2);
-                chair.rotate(new Vector3(0, 1, 0), Math.PI);
-            }
+        const chairResult = await ImportMeshAsync("low_poly_office_chair.glb", this.scene, {
+          rootUrl: ASSETS_URL,
+        });
+        const chair = chairResult.meshes[0];
+        if (chair) {
+          chair.position = new Vector3(pos.x, pos.y, pos.z + 1.2);
+          chair.rotate(new Vector3(0, 1, 0), Math.PI);
         }
+      }
 
-        // 3. Табличка "мокрый пол" (у входа)
-        const signResult = await ImportMeshAsync("psx_wet_floor_sign.glb", this.scene, { rootUrl: modelsPath });
-        const sign = signResult.meshes[0];
-        if (sign) {
-            sign.position = new Vector3(1.5, 0, -8.5);
-        }
+      const signResult = await ImportMeshAsync("psx_wet_floor_sign.glb", this.scene, {
+        rootUrl: ASSETS_URL,
+      });
+      const sign = signResult.meshes[0];
+      if (sign) sign.position = new Vector3(1.5, 0, -8.5);
 
-        console.log("Все объекты успешно загружены и расставлены!");
+      console.log("Все объекты успешно загружены и расставлены!");
     } catch (error) {
-        console.error("Ошибка при загрузке моделей:", error);
+      console.error("Ошибка при загрузке моделей:", error);
     }
   }
 }

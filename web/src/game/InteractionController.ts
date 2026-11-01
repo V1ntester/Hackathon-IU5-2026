@@ -4,6 +4,8 @@ import type { Office } from "../world/Office";
 import { InterviewPanel } from "../ui/InterviewPanel";
 import type { SceneManager } from "./SceneManager";
 
+type OfficeInteraction = "door" | "light";
+
 export class InteractionController {
   private readonly interviewPanel: InterviewPanel;
 
@@ -27,19 +29,43 @@ export class InteractionController {
     this.interviewPanel.dispose();
   }
 
-  private isNearDoor(): boolean {
-    const door = this.world.interviewDoorPosition;
+  private getNearestInteraction(): OfficeInteraction | null {
     const player = this.player.camera.position;
-    return (door.x - player.x) ** 2 + (door.z - player.z) ** 2 <= 2.25 ** 2;
+    const targets = [
+      { type: "door" as const, position: this.world.interviewDoorPosition, radius: 2.25 },
+      { type: "light" as const, position: this.world.lightSwitchPosition, radius: 1.65 },
+    ];
+    let nearest: OfficeInteraction | null = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    for (const target of targets) {
+      const distance = (target.position.x - player.x) ** 2 + (target.position.z - player.z) ** 2;
+      if (distance <= target.radius ** 2 && distance < nearestDistance) {
+        nearest = target.type;
+        nearestDistance = distance;
+      }
+    }
+    return nearest;
+  }
+
+  private showOfficePrompt(interaction: OfficeInteraction): void {
+    if (interaction === "door") {
+      this.hud.showPrompt("E — войти в кабинет для интервью");
+    } else {
+      this.hud.showPrompt(`E — ${this.world.isLightOn ? "выключить" : "включить"} свет`);
+    }
   }
 
   private readonly update = (): void => {
     if (this.scenes.isInterviewActive) return;
-    if (document.pointerLockElement !== this.canvas || !this.isNearDoor()) {
+    const interaction = document.pointerLockElement === this.canvas
+      ? this.getNearestInteraction()
+      : null;
+    if (interaction) {
+      this.showOfficePrompt(interaction);
+    } else {
       this.hud.hidePrompt();
-      return;
     }
-    this.hud.showPrompt("E — войти в кабинет для интервью");
   };
 
   private enterInterview(): void {
@@ -74,9 +100,16 @@ export class InteractionController {
       return;
     }
     if (event.target instanceof HTMLElement && event.target.closest("input, textarea, select, button")) return;
-    if (document.pointerLockElement !== this.canvas || !this.isNearDoor()) return;
+    if (document.pointerLockElement !== this.canvas) return;
 
+    const interaction = this.getNearestInteraction();
+    if (!interaction) return;
     event.preventDefault();
-    this.enterInterview();
+    if (interaction === "door") {
+      this.enterInterview();
+    } else {
+      this.world.toggleLight();
+      this.showOfficePrompt(interaction);
+    }
   };
 }

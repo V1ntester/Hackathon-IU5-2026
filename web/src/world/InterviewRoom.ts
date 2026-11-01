@@ -18,7 +18,7 @@ import {
   type Engine,
 } from "@babylonjs/core";
 import "@babylonjs/loaders";
-import { GRID_TEXTURE_URL } from "../game/config";
+import { ASSETS_URL, GRID_TEXTURE_URL } from "../game/config";
 
 const ROOM = {
   width: 10,
@@ -244,7 +244,7 @@ export class InterviewRoom {
     animationName?: string,
   ): Promise<AbstractMesh | null> {
     try {
-      const result = await ImportMeshAsync(file, this.scene, { rootUrl: "/models/" });
+      const result = await ImportMeshAsync(file, this.scene, { rootUrl: ASSETS_URL });
       const root = result.meshes[0];
       if (!root) return null;
 
